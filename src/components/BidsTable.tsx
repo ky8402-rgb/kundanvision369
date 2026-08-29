@@ -133,11 +133,11 @@ export const BidsTable: React.FC<BidsTableProps> = ({
   const handleWithdrawClick = (e: React.MouseEvent, bid: BackendBidItem) => {
     e.stopPropagation();
     const platform = (bid.platform || 'Freelancer.com').toLowerCase();
-    let url = 'https://www.freelancer.com/users/financial/withdrawal.php';
-    let platName = 'Freelancer.com';
+    let url = 'https://www.freelancer.com/dashboard/financial/';
+    let platName = 'Freelancer';
 
     if (platform.includes('upwork')) {
-      url = 'https://www.upwork.com/nx/reports/overview/';
+      url = 'https://www.upwork.com/nx/navigator/payments/withdraw';
       platName = 'Upwork';
     } else if (platform.includes('remote') || platform.includes('direct')) {
       url = 'https://www.paypal.com/mep/dashboard';
@@ -503,7 +503,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
                             type="button"
                             onClick={(e) => handleWithdrawClick(e, bid)}
                             className="py-1 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40 text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer shadow-sm shadow-emerald-500/20"
-                            title={`Withdraw $${amount.toFixed(2)} from ${bid.platform || 'Freelancer.com'}`}
+                            title={bid.platform?.toLowerCase().includes('upwork') ? 'Withdraw on Upwork' : 'Withdraw on Freelancer'}
                           >
                             <i className="fas fa-money-bill-wave text-[10px]"></i>
                             <span>Withdraw</span>
