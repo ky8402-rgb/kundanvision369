@@ -197,14 +197,17 @@ export const WithdrawalSummary: React.FC<WithdrawalSummaryProps> = ({
 
             {/* Direct Payout Action Button */}
             <div className="mt-3">
-              <button
-                type="button"
-                onClick={() => handleWithdrawClick(plat.name, plat.payoutUrl, plat.earned)}
-                className={`w-full py-2 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-2 cursor-pointer bg-[#0f172a] ${plat.btnBorder}`}
+              <a
+                href={plat.payoutUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => onWithdrawPlatform && onWithdrawPlatform(plat.name, plat.earned)}
+                className={`w-full py-2 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-2 cursor-pointer bg-[#0f172a] no-underline ${plat.btnBorder}`}
+                title={`Withdraw on ${plat.name}`}
               >
                 <i className="fas fa-arrow-up-right-from-square text-[11px]"></i>
                 <span>Withdraw on {plat.name}</span>
-              </button>
+              </a>
             </div>
           </div>
         ))}

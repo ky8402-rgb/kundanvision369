@@ -2,6 +2,24 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BackendBidItem, BACKEND_BASE_URL } from '../services/api';
 import { formatPackageName } from './PackageChart';
 
+// Conditional logic handler for withdraw destination target URL
+export function getWithdrawalTarget(platform?: string) {
+  const p = (platform || '').toLowerCase().trim();
+  if (p.includes('upwork')) {
+    return {
+      url: 'https://www.upwork.com/nx/navigator/payments/withdraw',
+      label: 'Withdraw on Upwork',
+      platformName: 'Upwork',
+    };
+  }
+  // Default to Freelancer.com
+  return {
+    url: 'https://www.freelancer.com/dashboard/financial/',
+    label: 'Withdraw on Freelancer',
+    platformName: 'Freelancer',
+  };
+}
+
 interface BidsTableProps {
   onSelectBid?: (bid: BackendBidItem) => void;
   externalRefreshTrigger?: number;
@@ -132,22 +150,10 @@ export const BidsTable: React.FC<BidsTableProps> = ({
 
   const handleWithdrawClick = (e: React.MouseEvent, bid: BackendBidItem) => {
     e.stopPropagation();
-    const platform = (bid.platform || 'Freelancer.com').toLowerCase();
-    let url = 'https://www.freelancer.com/dashboard/financial/';
-    let platName = 'Freelancer';
-
-    if (platform.includes('upwork')) {
-      url = 'https://www.upwork.com/nx/navigator/payments/withdraw';
-      platName = 'Upwork';
-    } else if (platform.includes('remote') || platform.includes('direct')) {
-      url = 'https://www.paypal.com/mep/dashboard';
-      platName = 'Direct PayPal / Stripe';
-    }
-
+    const target = getWithdrawalTarget(bid.platform);
     if (onNotify) {
-      onNotify(`Opening secure ${platName} payout portal for $${Number(bid.bid_amount || 0).toFixed(2)}`, 'info');
+      onNotify(`Opening secure ${target.platformName} payout portal for $${Number(bid.bid_amount || 0).toFixed(2)}`, 'info');
     }
-    window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const filteredBids = bids.filter((bid) => {
@@ -498,17 +504,22 @@ export const BidsTable: React.FC<BidsTableProps> = ({
                         </a>
 
                         {/* Withdraw button for won bids */}
-                        {isWon && (
-                          <button
-                            type="button"
-                            onClick={(e) => handleWithdrawClick(e, bid)}
-                            className="py-1 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40 text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer shadow-sm shadow-emerald-500/20"
-                            title={bid.platform?.toLowerCase().includes('upwork') ? 'Withdraw on Upwork' : 'Withdraw on Freelancer'}
-                          >
-                            <i className="fas fa-money-bill-wave text-[10px]"></i>
-                            <span>Withdraw</span>
-                          </button>
-                        )}
+                        {isWon && (() => {
+                          const withdrawTarget = getWithdrawalTarget(bid.platform);
+                          return (
+                            <a
+                              href={withdrawTarget.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => handleWithdrawClick(e, bid)}
+                              className="py-1 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40 text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer shadow-sm shadow-emerald-500/20 no-underline"
+                              title={withdrawTarget.label}
+                            >
+                              <i className="fas fa-money-bill-wave text-[10px]"></i>
+                              <span>Withdraw</span>
+                            </a>
+                          );
+                        })()}
                       </div>
                     </td>
 

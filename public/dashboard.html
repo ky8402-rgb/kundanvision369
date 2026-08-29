@@ -906,6 +906,24 @@
     let refreshSeconds = 60;
     let refreshTimer = null;
 
+    // Conditional logic handler to dynamically resolve withdrawal target URL and label
+    function getWithdrawalTarget(platform) {
+      const p = (platform || '').toLowerCase().trim();
+      if (p.includes('upwork')) {
+        return {
+          url: 'https://www.upwork.com/nx/navigator/payments/withdraw',
+          label: 'Withdraw on Upwork',
+          platformName: 'Upwork'
+        };
+      }
+      // Default to Freelancer.com
+      return {
+        url: 'https://www.freelancer.com/dashboard/financial/',
+        label: 'Withdraw on Freelancer',
+        platformName: 'Freelancer.com'
+      };
+    }
+
     // Direct withdrawal URL definitions
     const WITHDRAWAL_URLS = {
       freelancer: 'https://www.freelancer.com/dashboard/financial/',
@@ -1188,17 +1206,8 @@
             const dateStr = bid.submitted_at ? new Date(bid.submitted_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Recent';
             const jobUrl = bid.job_url || (bid.project_id ? `https://freelancer.com/projects/${bid.project_id}` : '#');
             
-            // Determine platform and correct withdrawal URL & label
-            const platformStr = (bid.platform || 'Freelancer.com').toLowerCase();
-            let withdrawUrl = WITHDRAWAL_URLS.freelancer;
-            let withdrawLabel = 'Withdraw on Freelancer';
-            let platformDisplay = 'Freelancer.com';
-
-            if (platformStr.includes('upwork')) {
-              withdrawUrl = WITHDRAWAL_URLS.upwork;
-              withdrawLabel = 'Withdraw on Upwork';
-              platformDisplay = 'Upwork';
-            }
+            // Determine platform and correct withdrawal URL & label via conditional handler
+            const withdrawTarget = getWithdrawalTarget(bid.platform);
 
             const workOptions = ['Not Started', 'In Progress', 'Completed', 'Delivered', 'Paid'];
 
@@ -1229,12 +1238,12 @@
                     </a>
                     ${isWon ? `
                       <a
-                        href="${withdrawUrl}"
+                        href="${withdrawTarget.url}"
                         target="_blank"
                         rel="noopener noreferrer"
                         class="table-withdraw-btn"
-                        title="${withdrawLabel}"
-                        onclick="notifyWithdraw('${platformDisplay}', '${withdrawUrl}')"
+                        title="${withdrawTarget.label}"
+                        onclick="notifyWithdraw('${withdrawTarget.platformName}', '${withdrawTarget.url}')"
                       >
                         <i class="fa-solid fa-money-bill-wave"></i> <span>Withdraw</span>
                       </a>
