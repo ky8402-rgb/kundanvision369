@@ -234,3 +234,16 @@ def get_recent_leads(limit: int = 20) -> List[Dict[str, Any]]:
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+def get_matches_since(hours: int = 24) -> List[tuple]:
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+    SELECT job_title, company, matched_package, url
+    FROM leads
+    ORDER BY created_at DESC
+    LIMIT 25
+    """)
+    rows = cursor.fetchall()
+    conn.close()
+    return [(r["job_title"], r["company"], r["matched_package"], r["url"]) for r in rows]

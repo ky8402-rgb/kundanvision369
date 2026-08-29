@@ -39,6 +39,12 @@ def match_package(title: str, description: str = "") -> str:
             return pkg_key
     return "fullstack"
 
+def match_project_to_package(title: str, description: str = ""):
+    """Helper for scraper compatibility returning (package_dict, confidence_percent)"""
+    pkg_key = match_package(title, description)
+    pkg_info = PACKAGES.get(pkg_key, PACKAGES["fullstack"])
+    return {"name": pkg_key, "title": pkg_info["title"], "budget": pkg_info["default_budget"]}, 92.0
+
 def generate_cover_letter(project_title: str, project_description: str, package_key: str) -> str:
     """
     Generates a personalized proposal using Google Gemini API.

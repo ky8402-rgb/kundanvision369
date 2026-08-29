@@ -4,8 +4,8 @@ services:
     name: freelancer-autobid-engine
     runtime: python
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port 10000
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port ${PORT:-10000}
     envVars:
       - key: FREELANCER_ACCESS_TOKEN
         sync: false
@@ -29,14 +29,14 @@ services:
     name: cron-find-and-bid
     runtime: python
     schedule: "0 * * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: curl -X GET https://freelancer-autobid-engine.onrender.com/api/cron/find-and-bid
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: curl -f -s https://freelancer-autobid-engine.onrender.com/api/cron/find-and-bid || true
 
   # 3. 30-Minute Real-Time Bid Sync & Won Alerts Cron Job
   - type: cron
     name: cron-sync-bids
     runtime: python
     schedule: "*/30 * * * *"
-    buildCommand: pip install -r requirements.txt
-    startCommand: curl -X GET https://freelancer-autobid-engine.onrender.com/api/cron/sync-bids
+    buildCommand: pip install --no-cache-dir -r requirements.txt
+    startCommand: curl -f -s https://freelancer-autobid-engine.onrender.com/api/cron/sync-bids || true
 
