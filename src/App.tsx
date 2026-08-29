@@ -21,6 +21,7 @@ import EmailVerificationModal from './components/EmailVerificationModal';
 import { PackageChart } from './components/PackageChart';
 import { BidsTable } from './components/BidsTable';
 import { LeadsTable } from './components/LeadsTable';
+import { WithdrawalSummary } from './components/WithdrawalSummary';
 import { FreelanceJob, GeneratedProposal, ActiveContract, defaultProfile, defaultRules, defaultActiveContracts } from './types';
 import {
   fetchBackendWorkOrders,
@@ -1896,7 +1897,7 @@ export default function App() {
                 const jobObj = toFreelanceJob({
                   id: bid.id,
                   title: bid.job_title,
-                  platform: 'Freelancer.com',
+                  platform: bid.platform || 'Freelancer.com',
                   budget: bid.bid_amount,
                   description: bid.cover_letter,
                   clientName: bid.client_name || bid.company,
@@ -1905,6 +1906,12 @@ export default function App() {
                 });
                 setSelectedProposalJob(jobObj);
                 setIsProposalStudioOpen(true);
+              }}
+              onBidsLoaded={(loadedBids) => {
+                setBackendBids(loadedBids);
+              }}
+              onNotify={(msg, type) => {
+                showToast(msg, type || 'info');
               }}
             />
 
@@ -1932,7 +1939,7 @@ export default function App() {
                 const jobObj = toFreelanceJob({
                   id: bid.id,
                   title: bid.job_title,
-                  platform: 'Freelancer.com',
+                  platform: bid.platform || 'Freelancer.com',
                   budget: bid.bid_amount,
                   description: bid.cover_letter,
                   clientName: bid.client_name || bid.company,
@@ -1941,6 +1948,15 @@ export default function App() {
                 });
                 setSelectedProposalJob(jobObj);
                 setIsProposalStudioOpen(true);
+              }}
+            />
+
+            {/* Platform Earnings & Withdrawal Summary Section */}
+            <WithdrawalSummary
+              bids={backendBids}
+              stats={backendStats}
+              onWithdrawPlatform={(platformName, amount) => {
+                showToast(`Routing to secure withdrawal gateway for ${platformName} ($${amount.toFixed(2)})`, 'info');
               }}
             />
 
