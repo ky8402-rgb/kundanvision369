@@ -2,21 +2,39 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BackendBidItem, BACKEND_BASE_URL } from '../services/api';
 import { formatPackageName } from './PackageChart';
 
-// Conditional logic handler for withdraw destination target URL
-export function getWithdrawalTarget(platform?: string) {
+// Conditional logic handler for withdraw destination target URL and styling
+export function getWithdrawalTarget(platform?: string, jobUrl?: string) {
   const p = (platform || '').toLowerCase().trim();
   if (p.includes('upwork')) {
     return {
       url: 'https://www.upwork.com/nx/navigator/payments/withdraw',
-      label: 'Withdraw on Upwork',
+      label: '💰 Withdraw on Upwork',
+      tooltip: 'Withdraw your earned funds directly on Upwork (opens in new tab)',
       platformName: 'Upwork',
+      btnClass: 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border-emerald-500/40 shadow-emerald-500/20',
+      icon: 'fas fa-money-bill-wave',
+      isDirectWithdrawal: true,
+    };
+  } else if (p.includes('remote') || p.includes('remoteok')) {
+    return {
+      url: jobUrl || 'https://remoteok.com',
+      label: '📧 Contact Client',
+      tooltip: 'Contact the client directly to discuss payment',
+      platformName: 'RemoteOK',
+      btnClass: 'bg-orange-500/20 hover:bg-orange-500 text-orange-300 hover:text-slate-950 border-orange-500/40 shadow-orange-500/20',
+      icon: 'fas fa-envelope',
+      isDirectWithdrawal: false,
     };
   }
   // Default to Freelancer.com
   return {
     url: 'https://www.freelancer.com/dashboard/financial/',
-    label: 'Withdraw on Freelancer',
+    label: '💰 Withdraw on Freelancer',
+    tooltip: 'Withdraw your earned funds directly on Freelancer.com (opens in new tab)',
     platformName: 'Freelancer',
+    btnClass: 'bg-sky-500/20 hover:bg-sky-500 text-sky-300 hover:text-slate-950 border-sky-500/40 shadow-sky-500/20',
+    icon: 'fas fa-money-bill-wave',
+    isDirectWithdrawal: true,
   };
 }
 
@@ -152,7 +170,11 @@ export const BidsTable: React.FC<BidsTableProps> = ({
     e.stopPropagation();
     const target = getWithdrawalTarget(bid.platform);
     if (onNotify) {
-      onNotify(`Opening secure ${target.platformName} payout portal for $${Number(bid.bid_amount || 0).toFixed(2)}`, 'info');
+      if (target.isDirectWithdrawal) {
+        onNotify(`Opening ${target.platformName} portal. Please log in to ${target.platformName} to withdraw your funds.`, 'info');
+      } else {
+        onNotify(`Opening ${target.platformName} job. Contact the client directly to discuss payment.`, 'info');
+      }
     }
   };
 
@@ -186,7 +208,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
       );
     } else if (p.includes('remoteok') || p.includes('remote')) {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-rose-500/15 text-rose-300 border-rose-500/30 whitespace-nowrap">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold border bg-orange-500/15 text-orange-300 border-orange-500/30 whitespace-nowrap">
           <i className="fas fa-bolt text-[10px]"></i>
           RemoteOK
         </span>
@@ -503,20 +525,20 @@ export const BidsTable: React.FC<BidsTableProps> = ({
                           <span className="hidden sm:inline">Job</span>
                         </a>
 
-                        {/* Withdraw button for won bids */}
+                        {/* Withdraw or Contact Client button for won bids */}
                         {isWon && (() => {
-                          const withdrawTarget = getWithdrawalTarget(bid.platform);
+                          const withdrawTarget = getWithdrawalTarget(bid.platform, jobUrl);
                           return (
                             <a
                               href={withdrawTarget.url}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => handleWithdrawClick(e, bid)}
-                              className="py-1 px-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500 text-emerald-300 hover:text-slate-950 border border-emerald-500/40 text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer shadow-sm shadow-emerald-500/20 no-underline"
-                              title={withdrawTarget.label}
+                              className={`py-1 px-2.5 rounded-lg border text-[11px] font-bold transition-all inline-flex items-center gap-1 cursor-pointer shadow-sm no-underline ${withdrawTarget.btnClass}`}
+                              title={withdrawTarget.tooltip}
                             >
-                              <i className="fas fa-money-bill-wave text-[10px]"></i>
-                              <span>Withdraw</span>
+                              <i className={`${withdrawTarget.icon} text-[10px]`}></i>
+                              <span>{withdrawTarget.label}</span>
                             </a>
                           );
                         })()}

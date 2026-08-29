@@ -58,17 +58,18 @@ export const WithdrawalSummary: React.FC<WithdrawalSummaryProps> = ({
         feeRate: 'Weekly scheduled disbursements',
       },
       remoteok: {
-        name: 'RemoteOK & Direct Contracts',
+        name: 'RemoteOK',
         platformKey: 'remoteok',
         wonCount: 0,
         earned: 0,
         currency: 'USD',
-        payoutUrl: 'https://www.paypal.com/mep/dashboard',
-        icon: 'fas fa-bolt text-rose-400',
-        badgeColor: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-        btnBorder: 'border-rose-500/40 hover:border-rose-400 text-rose-300 hover:bg-rose-500/10',
-        payoutMethod: 'Stripe / PayPal Payouts',
-        feeRate: 'Instant Settlement',
+        payoutUrl: 'https://remoteok.com',
+        icon: 'fas fa-bolt text-orange-400',
+        badgeColor: 'bg-orange-500/15 text-orange-300 border-orange-500/30',
+        btnBorder: 'border-orange-500/40 hover:border-orange-400 text-orange-300 hover:bg-orange-500/10',
+        btnText: '📧 View RemoteOK Jobs',
+        payoutMethod: 'Direct Client Invoice / Outreach',
+        feeRate: 'Manual Client Outreach',
       },
     };
 
@@ -203,24 +204,25 @@ export const WithdrawalSummary: React.FC<WithdrawalSummaryProps> = ({
                 rel="noopener noreferrer"
                 onClick={() => onWithdrawPlatform && onWithdrawPlatform(plat.name, plat.earned)}
                 className={`w-full py-2 px-3 rounded-lg text-xs font-bold border transition-all flex items-center justify-center gap-2 cursor-pointer bg-[#0f172a] no-underline ${plat.btnBorder}`}
-                title={`Withdraw on ${plat.name}`}
+                title={plat.platformKey === 'remoteok' ? 'View RemoteOK Jobs' : `Withdraw on ${plat.name}`}
               >
                 <i className="fas fa-arrow-up-right-from-square text-[11px]"></i>
-                <span>Withdraw on {plat.name}</span>
+                <span>{plat.platformKey === 'remoteok' ? '📧 View RemoteOK Jobs' : `💰 Withdraw on ${plat.name}`}</span>
               </a>
             </div>
           </div>
         ))}
       </div>
 
-      {/* Safety & Compliance notice */}
-      <div className="mt-4 pt-3 border-t border-[#1e293b]/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11.5px] text-slate-500">
-        <div className="flex items-center gap-1.5">
-          <i className="fas fa-shield-halved text-emerald-400 text-xs"></i>
-          <span>Direct withdrawal portals require authenticated multi-factor login on the respective official partner platforms.</span>
+      {/* Note & Safety Notice */}
+      <div className="mt-4 pt-3 border-t border-[#1e293b]/70 flex flex-col gap-2 text-[11.5px] text-slate-400">
+        <div className="flex items-center gap-1.5 text-orange-400/90 font-medium">
+          <i className="fas fa-circle-info text-xs"></i>
+          <span>RemoteOK leads require manual client outreach. Use the job link to contact the client directly.</span>
         </div>
-        <div className="text-[11px] text-slate-500 font-mono">
-          Escrow Protection: Active
+        <div className="flex items-center gap-1.5 text-slate-500 text-[11px]">
+          <i className="fas fa-shield-halved text-emerald-400 text-xs"></i>
+          <span>Direct withdrawal portals require authenticated login on the respective official partner platforms (Freelancer / Upwork).</span>
         </div>
       </div>
     </div>
