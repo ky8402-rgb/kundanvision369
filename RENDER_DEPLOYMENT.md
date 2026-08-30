@@ -32,6 +32,7 @@ This project is configured and ready for 1-click or automated Git deployment on 
    | `PAYPAL_RECEIVER_EMAIL` | `kundank4@icloud.com` |
    | `PAYPAL_ME_USERNAME` | `ky8402` |
    | `PAYPAL_MODE` | `live` |
+   | `PAYPAL_WEBHOOK_ID` | `2BL477687P123401A` |
    | `GEMINI_API_KEY` | *(Your Google Gemini API Key from AI Studio)* |
    | `PAYPAL_CLIENT_ID` | *(Optional: PayPal REST API Client ID)* |
    | `PAYPAL_CLIENT_SECRET` | *(Optional: PayPal REST API Secret)* |

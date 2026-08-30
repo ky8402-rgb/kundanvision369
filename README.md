@@ -79,7 +79,7 @@ GigPilot routes client milestone payments, checkout links, and invoicing directl
 | `PAYPAL_MODE` | `live` | Environment mode (`live` for real payments, `sandbox` for testing) |
 | `PAYPAL_CLIENT_ID` | *(Optional)* | PayPal REST API v2 App Client ID |
 | `PAYPAL_CLIENT_SECRET` | *(Optional)* | PayPal REST API v2 App Secret |
-| `PAYPAL_WEBHOOK_ID` | *(Optional)* | PayPal Webhook listener ID for automated payment ingestion |
+| `PAYPAL_WEBHOOK_ID` | `2BL477687P123401A` | PayPal Webhook listener ID for automated payment ingestion |
 
 ---
 

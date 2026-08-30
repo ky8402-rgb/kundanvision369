@@ -18,7 +18,7 @@ let payPalConfig: PayPalConfig = {
   mode: (process.env.PAYPAL_MODE === 'sandbox') ? 'sandbox' : 'live',
   receiverEmail: process.env.PAYPAL_RECEIVER_EMAIL || 'kundank4@icloud.com',
   paypalMeUsername: process.env.PAYPAL_ME_USERNAME || 'ky8402',
-  webhookId: process.env.PAYPAL_WEBHOOK_ID || '',
+  webhookId: process.env.PAYPAL_WEBHOOK_ID || '2BL477687P123401A',
   currency: 'USD',
   autoCapture: true
 };
@@ -32,7 +32,7 @@ export function getPayPalConfig(): PayPalConfig {
     mode: process.env.PAYPAL_MODE ? envMode : (payPalConfig.mode || 'live'),
     receiverEmail: (process.env.PAYPAL_RECEIVER_EMAIL || payPalConfig.receiverEmail || 'kundank4@icloud.com').trim(),
     paypalMeUsername: (process.env.PAYPAL_ME_USERNAME || payPalConfig.paypalMeUsername || 'ky8402').trim(),
-    webhookId: (process.env.PAYPAL_WEBHOOK_ID || payPalConfig.webhookId || '').trim()
+    webhookId: (process.env.PAYPAL_WEBHOOK_ID || payPalConfig.webhookId || '2BL477687P123401A').trim()
   };
 }
 
