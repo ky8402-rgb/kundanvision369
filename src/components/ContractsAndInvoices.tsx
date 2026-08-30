@@ -486,7 +486,7 @@ export const ContractsAndInvoices: React.FC<ContractsAndInvoicesProps> = ({
                     <div className="text-slate-300">SWIFT / BIC: <strong className="text-white font-mono">FDRLINBBIBD</strong></div>
                     <div className="text-slate-300">PayPal Handle: <strong className="text-white font-mono">ky8402</strong></div>
                     <div className="text-slate-300">Direct Link: <a href="https://paypal.me/ky8402" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline font-mono">paypal.me/ky8402</a></div>
-                    <div className="text-slate-300">Email: <strong className="text-white font-mono">ky8402@gmail.com</strong></div>
+                    <div className="text-slate-300">Email: <strong className="text-white font-mono">kundank4@icloud.com</strong></div>
                   </div>
                 </div>
               </div>

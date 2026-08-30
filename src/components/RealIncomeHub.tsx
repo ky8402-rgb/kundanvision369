@@ -138,7 +138,7 @@ export const RealIncomeHub: React.FC<RealIncomeHubProps> = ({
 
   // Constants
   const PAYPAL_HANDLE = 'ky8402';
-  const PAYPAL_EMAIL = 'ky8402@gmail.com';
+  const PAYPAL_EMAIL = 'kundank4@icloud.com';
   const UPI_ID = 'chandimay@ybl';
   const ACCOUNT_HOLDER = 'Kundan Kumar';
   const BANK_NAME = 'Federal Bank';

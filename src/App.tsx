@@ -44,7 +44,7 @@ import {
 } from './services/api';
 
 // Primary Payment Gateways Configuration
-const PRIMARY_PAYPAL_EMAIL = 'ky8402@gmail.com';
+const PRIMARY_PAYPAL_EMAIL = 'kundank4@icloud.com';
 const PRIMARY_PAYPAL_ME = 'ky8402';
 const PRIMARY_PAYPAL_ME_URL = 'https://paypal.me/ky8402';
 

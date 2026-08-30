@@ -29,7 +29,7 @@ This project is configured and ready for 1-click or automated Git deployment on 
    |---|---|
    | `NODE_VERSION` | `20` |
    | `NODE_ENV` | `production` |
-   | `PAYPAL_RECEIVER_EMAIL` | `ky8402@gmail.com` |
+   | `PAYPAL_RECEIVER_EMAIL` | `kundank4@icloud.com` |
    | `PAYPAL_ME_USERNAME` | `ky8402` |
    | `PAYPAL_MODE` | `live` |
    | `GEMINI_API_KEY` | *(Your Google Gemini API Key from AI Studio)* |

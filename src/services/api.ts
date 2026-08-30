@@ -260,7 +260,7 @@ export async function getPlatformStatus(): Promise<PlatformConnectionStatus> {
       paypal: {
         connected: true,
         mode: 'live',
-        receiverEmail: 'ky8402@gmail.com',
+        receiverEmail: 'kundank4@icloud.com',
         paypalMeUsername: 'ky8402'
       }
     };
@@ -538,7 +538,7 @@ export async function fetchPayPalConfig(): Promise<{ success: boolean; config: P
     return {
       success: false,
       config: {
-        receiverEmail: 'ky8402@gmail.com',
+        receiverEmail: 'kundank4@icloud.com',
         paypalMeUsername: 'ky8402',
         mode: 'live',
         currency: 'USD',

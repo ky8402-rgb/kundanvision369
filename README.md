@@ -74,7 +74,7 @@ GigPilot routes client milestone payments, checkout links, and invoicing directl
 
 | Variable | Default Value | Description |
 |---|---|---|
-| `PAYPAL_RECEIVER_EMAIL` | `ky8402@gmail.com` | Primary PayPal business receiving email |
+| `PAYPAL_RECEIVER_EMAIL` | `kundank4@icloud.com` | Primary PayPal business receiving email |
 | `PAYPAL_ME_USERNAME` | `ky8402` | Active PayPal business handle for instant client checkout links (`paypal.me/ky8402`) |
 | `PAYPAL_MODE` | `live` | Environment mode (`live` for real payments, `sandbox` for testing) |
 | `PAYPAL_CLIENT_ID` | *(Optional)* | PayPal REST API v2 App Client ID |
