@@ -51,7 +51,7 @@ function getPlatformStatus() {
   const paypalClientId = process.env.PAYPAL_CLIENT_ID;
   const paypalSecret = process.env.PAYPAL_CLIENT_SECRET;
   const paypalReceiver = process.env.PAYPAL_RECEIVER_EMAIL || "ky8402@gmail.com";
-  const paypalMeUser = process.env.PAYPAL_ME_USERNAME || "ky7079";
+  const paypalMeUser = process.env.PAYPAL_ME_USERNAME || "ky8402";
   const isPaypalLive = process.env.PAYPAL_MODE === "live" || Boolean(paypalClientId && !paypalClientId.startsWith("sb-"));
   return {
     remoteok: {
@@ -338,7 +338,7 @@ var payPalConfig = {
   clientSecret: process.env.PAYPAL_CLIENT_SECRET || "EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N",
   mode: process.env.PAYPAL_MODE === "sandbox" ? "sandbox" : "live",
   receiverEmail: process.env.PAYPAL_RECEIVER_EMAIL || "ky8402@gmail.com",
-  paypalMeUsername: process.env.PAYPAL_ME_USERNAME || "ky7079",
+  paypalMeUsername: process.env.PAYPAL_ME_USERNAME || "ky8402",
   webhookId: process.env.PAYPAL_WEBHOOK_ID || "",
   currency: "USD",
   autoCapture: true
@@ -351,7 +351,7 @@ function getPayPalConfig() {
     clientSecret: (process.env.PAYPAL_CLIENT_SECRET || payPalConfig.clientSecret || "EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N").trim(),
     mode: process.env.PAYPAL_MODE ? envMode : payPalConfig.mode || "live",
     receiverEmail: (process.env.PAYPAL_RECEIVER_EMAIL || payPalConfig.receiverEmail || "ky8402@gmail.com").trim(),
-    paypalMeUsername: (process.env.PAYPAL_ME_USERNAME || payPalConfig.paypalMeUsername || "ky7079").trim(),
+    paypalMeUsername: (process.env.PAYPAL_ME_USERNAME || payPalConfig.paypalMeUsername || "ky8402").trim(),
     webhookId: (process.env.PAYPAL_WEBHOOK_ID || payPalConfig.webhookId || "").trim()
   };
 }
@@ -410,6 +410,9 @@ async function createPayPalOrder(params) {
             reference_id: params.customId || `ord_${Date.now()}`,
             description: params.description || "Freelance Engineering Milestone Deliverable",
             custom_id: params.customId || `custom_${Date.now()}`,
+            payee: cfg.receiverEmail ? {
+              email_address: cfg.receiverEmail
+            } : void 0,
             amount: {
               currency_code: currency,
               value: formattedAmount
@@ -739,7 +742,7 @@ var activityLogs = [
       client: "Apex Studio Ventures",
       amount: 120,
       currency: "USD",
-      method: "PayPal.Me (paypal.me/ky7079)"
+      method: "PayPal.Me (paypal.me/ky8402)"
     },
     responsePayload: {
       success: true,
