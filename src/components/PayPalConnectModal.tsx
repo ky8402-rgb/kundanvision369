@@ -33,7 +33,7 @@ export const PayPalConnectModal: React.FC<PayPalConnectModalProps> = ({
   if (!isOpen) return null;
 
   const PAYPAL_EMAIL = 'ky8402@gmail.com';
-  const PAYPAL_HANDLE = 'ky7079';
+  const PAYPAL_HANDLE = 'ky8402';
   const UPI_ID = 'chandimay@ybl';
   const ACCOUNT_HOLDER = 'Kundan Kumar';
   const BANK_NAME = 'Federal Bank';

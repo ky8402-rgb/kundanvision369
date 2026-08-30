@@ -137,7 +137,7 @@ export const RealIncomeHub: React.FC<RealIncomeHubProps> = ({
   const [isSimulatingConfirmation, setIsSimulatingConfirmation] = useState(false);
 
   // Constants
-  const PAYPAL_HANDLE = 'ky7079';
+  const PAYPAL_HANDLE = 'ky8402';
   const PAYPAL_EMAIL = 'ky8402@gmail.com';
   const UPI_ID = 'chandimay@ybl';
   const ACCOUNT_HOLDER = 'Kundan Kumar';

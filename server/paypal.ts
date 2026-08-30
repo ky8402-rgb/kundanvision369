@@ -17,7 +17,7 @@ let payPalConfig: PayPalConfig = {
   clientSecret: process.env.PAYPAL_CLIENT_SECRET || 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N',
   mode: (process.env.PAYPAL_MODE === 'sandbox') ? 'sandbox' : 'live',
   receiverEmail: process.env.PAYPAL_RECEIVER_EMAIL || 'ky8402@gmail.com',
-  paypalMeUsername: process.env.PAYPAL_ME_USERNAME || 'ky7079',
+  paypalMeUsername: process.env.PAYPAL_ME_USERNAME || 'ky8402',
   webhookId: process.env.PAYPAL_WEBHOOK_ID || '',
   currency: 'USD',
   autoCapture: true
@@ -31,7 +31,7 @@ export function getPayPalConfig(): PayPalConfig {
     clientSecret: (process.env.PAYPAL_CLIENT_SECRET || payPalConfig.clientSecret || 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N').trim(),
     mode: process.env.PAYPAL_MODE ? envMode : (payPalConfig.mode || 'live'),
     receiverEmail: (process.env.PAYPAL_RECEIVER_EMAIL || payPalConfig.receiverEmail || 'ky8402@gmail.com').trim(),
-    paypalMeUsername: (process.env.PAYPAL_ME_USERNAME || payPalConfig.paypalMeUsername || 'ky7079').trim(),
+    paypalMeUsername: (process.env.PAYPAL_ME_USERNAME || payPalConfig.paypalMeUsername || 'ky8402').trim(),
     webhookId: (process.env.PAYPAL_WEBHOOK_ID || payPalConfig.webhookId || '').trim()
   };
 }
@@ -121,6 +121,9 @@ export async function createPayPalOrder(params: {
             reference_id: params.customId || `ord_${Date.now()}`,
             description: params.description || 'Freelance Engineering Milestone Deliverable',
             custom_id: params.customId || `custom_${Date.now()}`,
+            payee: cfg.receiverEmail ? {
+              email_address: cfg.receiverEmail
+            } : undefined,
             amount: {
               currency_code: currency,
               value: formattedAmount

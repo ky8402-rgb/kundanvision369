@@ -45,8 +45,8 @@ import {
 
 // Primary Payment Gateways Configuration
 const PRIMARY_PAYPAL_EMAIL = 'ky8402@gmail.com';
-const PRIMARY_PAYPAL_ME = 'ky7079';
-const PRIMARY_PAYPAL_ME_URL = 'https://paypal.me/ky7079';
+const PRIMARY_PAYPAL_ME = 'ky8402';
+const PRIMARY_PAYPAL_ME_URL = 'https://paypal.me/ky8402';
 
 // Primary Indian Bank & UPI Configuration
 const PRIMARY_INDIAN_BANK_NAME = 'Federal Bank';
@@ -927,7 +927,7 @@ export default function App() {
       case 'income':
         return {
           section: 'Real Income & Client Checkout Hub',
-          description: 'Monetize development & AI skills with real client services, instant PayPal receiving links (paypal.me/ky7079), domestic Indian UPI QR checkouts, and custom milestone payment requests.'
+          description: 'Monetize development & AI skills with real client services, instant PayPal receiving links (paypal.me/ky8402), domestic Indian UPI QR checkouts, and custom milestone payment requests.'
         };
       case 'remoteok':
         return {
@@ -947,7 +947,7 @@ export default function App() {
       case 'paypal':
         return {
           section: 'PayPal Payment Terminal',
-          description: 'Instant PayPal payment links (paypal.me/ky7079), direct invoice generator, dynamic QR codes, and virtual checkout terminal.'
+          description: 'Instant PayPal payment links (paypal.me/ky8402), direct invoice generator, dynamic QR codes, and virtual checkout terminal.'
         };
       case 'bank':
         return {
@@ -1613,7 +1613,7 @@ export default function App() {
               target="_blank"
               rel="noopener noreferrer"
               className="font-mono text-xs bg-[#11141f] hover:bg-[#1a2035] px-3 py-1.5 rounded-full border border-[#2a3147] hover:border-[#00cfe8]/50 text-[#00cfe8] flex items-center gap-1.5 transition-all"
-              title="Click to open PayPal.Me receiving portal (https://paypal.me/ky7079)"
+              title="Click to open PayPal.Me receiving portal (https://paypal.me/ky8402)"
             >
               <i className="fab fa-paypal text-[11px]"></i>
               <span>paypal.me/{PRIMARY_PAYPAL_ME}</span>
@@ -2273,7 +2273,7 @@ export default function App() {
                     <button
                       onClick={() => {
                         navigator.clipboard?.writeText(PRIMARY_PAYPAL_ME_URL);
-                        showToast('📋 Copied PayPal receiving link (https://paypal.me/ky7079)!', 'success');
+                        showToast('📋 Copied PayPal receiving link (https://paypal.me/ky8402)!', 'success');
                       }}
                       className="bg-[#11141f] hover:bg-[#1f253a] text-slate-300 text-[10px] px-2 py-0.5 rounded border border-[#2a3147] transition-all"
                     >

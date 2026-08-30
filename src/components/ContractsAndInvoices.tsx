@@ -372,7 +372,7 @@ export const ContractsAndInvoices: React.FC<ContractsAndInvoicesProps> = ({
 
                 <button
                   onClick={() => {
-                    const text = `INVOICE #${showInvoiceModal.id}\nPayee: Kundan Kumar\nProject: ${showInvoiceModal.jobTitle}\nClient: ${showInvoiceModal.clientName}\nAmount Due: $${(showInvoiceModal.totalValue - showInvoiceModal.amountPaid).toLocaleString()} USD\n\nBank Transfer:\nBank: Federal Bank\nAccount: 99980119788763\nIFSC: FDRL0001447\nUPI: chandimay@ybl\nPayPal: https://paypal.me/ky7079`;
+                    const text = `INVOICE #${showInvoiceModal.id}\nPayee: Kundan Kumar\nProject: ${showInvoiceModal.jobTitle}\nClient: ${showInvoiceModal.clientName}\nAmount Due: $${(showInvoiceModal.totalValue - showInvoiceModal.amountPaid).toLocaleString()} USD\n\nBank Transfer:\nBank: Federal Bank\nAccount: 99980119788763\nIFSC: FDRL0001447\nUPI: chandimay@ybl\nPayPal: https://paypal.me/ky8402`;
                     navigator.clipboard.writeText(text);
                     setInvoiceCopied(true);
                     setTimeout(() => setInvoiceCopied(false), 2000);
@@ -484,8 +484,8 @@ export const ContractsAndInvoices: React.FC<ContractsAndInvoicesProps> = ({
                   <div className="rounded-lg border border-slate-800 bg-slate-900/80 p-2.5 space-y-1">
                     <div className="text-cyan-400 font-bold">🌏 Global USD / Wire &amp; PayPal:</div>
                     <div className="text-slate-300">SWIFT / BIC: <strong className="text-white font-mono">FDRLINBBIBD</strong></div>
-                    <div className="text-slate-300">PayPal Handle: <strong className="text-white font-mono">ky7079</strong></div>
-                    <div className="text-slate-300">Direct Link: <a href="https://paypal.me/ky7079" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline font-mono">paypal.me/ky7079</a></div>
+                    <div className="text-slate-300">PayPal Handle: <strong className="text-white font-mono">ky8402</strong></div>
+                    <div className="text-slate-300">Direct Link: <a href="https://paypal.me/ky8402" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline font-mono">paypal.me/ky8402</a></div>
                     <div className="text-slate-300">Email: <strong className="text-white font-mono">ky8402@gmail.com</strong></div>
                   </div>
                 </div>
@@ -495,7 +495,7 @@ export const ContractsAndInvoices: React.FC<ContractsAndInvoicesProps> = ({
             {/* Bottom Actions */}
             <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-800 pt-4">
               <a
-                href={`https://paypal.me/ky7079/${showInvoiceModal.totalValue - showInvoiceModal.amountPaid}`}
+                href={`https://paypal.me/ky8402/${showInvoiceModal.totalValue - showInvoiceModal.amountPaid}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center space-x-1.5 rounded-xl bg-cyan-500/15 border border-cyan-500/30 text-cyan-300 hover:bg-cyan-500/25 px-4 py-2 text-xs font-bold transition-all"

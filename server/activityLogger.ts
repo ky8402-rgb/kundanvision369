@@ -219,7 +219,7 @@ let activityLogs: ActivityLogEntry[] = [
       client: 'Apex Studio Ventures',
       amount: 120.00,
       currency: 'USD',
-      method: 'PayPal.Me (paypal.me/ky7079)'
+      method: 'PayPal.Me (paypal.me/ky8402)'
     },
     responsePayload: {
       success: true,

@@ -73,7 +73,7 @@ export function getPlatformStatus(): PlatformStatus {
   const paypalClientId = process.env.PAYPAL_CLIENT_ID;
   const paypalSecret = process.env.PAYPAL_CLIENT_SECRET;
   const paypalReceiver = process.env.PAYPAL_RECEIVER_EMAIL || 'ky8402@gmail.com';
-  const paypalMeUser = process.env.PAYPAL_ME_USERNAME || 'ky7079';
+  const paypalMeUser = process.env.PAYPAL_ME_USERNAME || 'ky8402';
   const isPaypalLive = process.env.PAYPAL_MODE === 'live' || Boolean(paypalClientId && !paypalClientId.startsWith('sb-'));
 
   return {

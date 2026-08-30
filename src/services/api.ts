@@ -261,7 +261,7 @@ export async function getPlatformStatus(): Promise<PlatformConnectionStatus> {
         connected: true,
         mode: 'live',
         receiverEmail: 'ky8402@gmail.com',
-        paypalMeUsername: 'ky7079'
+        paypalMeUsername: 'ky8402'
       }
     };
   }
@@ -539,7 +539,7 @@ export async function fetchPayPalConfig(): Promise<{ success: boolean; config: P
       success: false,
       config: {
         receiverEmail: 'ky8402@gmail.com',
-        paypalMeUsername: 'ky7079',
+        paypalMeUsername: 'ky8402',
         mode: 'live',
         currency: 'USD',
         autoCapture: true,

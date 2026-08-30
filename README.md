@@ -66,6 +66,23 @@ Production-ready FastAPI backend for autonomous freelance project scraping, AI p
 
 ---
 
+## 💳 PayPal REST Gateway & Direct Business Wallet Setup
+
+GigPilot routes client milestone payments, checkout links, and invoicing directly into your active PayPal Business wallet.
+
+### PayPal Environment Configuration
+
+| Variable | Default Value | Description |
+|---|---|---|
+| `PAYPAL_RECEIVER_EMAIL` | `ky8402@gmail.com` | Primary PayPal business receiving email |
+| `PAYPAL_ME_USERNAME` | `ky8402` | Active PayPal business handle for instant client checkout links (`paypal.me/ky8402`) |
+| `PAYPAL_MODE` | `live` | Environment mode (`live` for real payments, `sandbox` for testing) |
+| `PAYPAL_CLIENT_ID` | *(Optional)* | PayPal REST API v2 App Client ID |
+| `PAYPAL_CLIENT_SECRET` | *(Optional)* | PayPal REST API v2 App Secret |
+| `PAYPAL_WEBHOOK_ID` | *(Optional)* | PayPal Webhook listener ID for automated payment ingestion |
+
+---
+
 ## ⏰ Setting Up Cron Triggers (Render Cron / GitHub Actions / EasyCron)
 To run autonomous bidding cycles every 10–30 minutes, set a GET request to:
 - `https://your-backend-url.onrender.com/api/cron/find-and-bid`
