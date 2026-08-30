@@ -50,7 +50,7 @@ function getPlatformStatus() {
   const flexjobsKey = process.env.FLEXJOBS_API_KEY;
   const paypalClientId = process.env.PAYPAL_CLIENT_ID;
   const paypalSecret = process.env.PAYPAL_CLIENT_SECRET;
-  const paypalReceiver = process.env.PAYPAL_RECEIVER_EMAIL || "ky8402@gmail.com";
+  const paypalReceiver = process.env.PAYPAL_RECEIVER_EMAIL || "kundank4@icloud.com";
   const paypalMeUser = process.env.PAYPAL_ME_USERNAME || "ky8402";
   const isPaypalLive = process.env.PAYPAL_MODE === "live" || Boolean(paypalClientId && !paypalClientId.startsWith("sb-"));
   return {
@@ -337,7 +337,7 @@ var payPalConfig = {
   clientId: process.env.PAYPAL_CLIENT_ID || "BAAv8rRenc5jlfD6eH_8pvgcU250jXTZCnyPKdBby13EAYRKhCempoPQ3Hj41GEfe2qBMu1P8ZslnbdkIc",
   clientSecret: process.env.PAYPAL_CLIENT_SECRET || "EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N",
   mode: process.env.PAYPAL_MODE === "sandbox" ? "sandbox" : "live",
-  receiverEmail: process.env.PAYPAL_RECEIVER_EMAIL || "ky8402@gmail.com",
+  receiverEmail: process.env.PAYPAL_RECEIVER_EMAIL || "kundank4@icloud.com",
   paypalMeUsername: process.env.PAYPAL_ME_USERNAME || "ky8402",
   webhookId: process.env.PAYPAL_WEBHOOK_ID || "",
   currency: "USD",
@@ -350,7 +350,7 @@ function getPayPalConfig() {
     clientId: (process.env.PAYPAL_CLIENT_ID || payPalConfig.clientId || "BAAv8rRenc5jlfD6eH_8pvgcU250jXTZCnyPKdBby13EAYRKhCempoPQ3Hj41GEfe2qBMu1P8ZslnbdkIc").trim(),
     clientSecret: (process.env.PAYPAL_CLIENT_SECRET || payPalConfig.clientSecret || "EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N").trim(),
     mode: process.env.PAYPAL_MODE ? envMode : payPalConfig.mode || "live",
-    receiverEmail: (process.env.PAYPAL_RECEIVER_EMAIL || payPalConfig.receiverEmail || "ky8402@gmail.com").trim(),
+    receiverEmail: (process.env.PAYPAL_RECEIVER_EMAIL || payPalConfig.receiverEmail || "kundank4@icloud.com").trim(),
     paypalMeUsername: (process.env.PAYPAL_ME_USERNAME || payPalConfig.paypalMeUsername || "ky8402").trim(),
     webhookId: (process.env.PAYPAL_WEBHOOK_ID || payPalConfig.webhookId || "").trim()
   };
