@@ -56,7 +56,9 @@ Production-ready FastAPI backend for autonomous freelance project scraping, AI p
    - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
 4. In **Environment Variables**, add:
    - `GEMINI_API_KEY`: Your Google Gemini API key
-   - `FREELANCER_ACCESS_TOKEN`: (Optional) Your Freelancer.com OAuth token
+   - `FREELANCER_ACCESS_TOKEN`: `3PKsiB3m736mE0wnirnHeLTUzLP1xc` (Freelancer OAuth & Session Token)
+   - `FREELANCER_SESSION`: `3PKsiB3m736mE0wnirnHeLTUzLP1xc`
+   - `FREELANCER_AUTH_TOKEN`: `3PKsiB3m736mE0wnirnHeLTUzLP1xc`
    - `TELEGRAM_BOT_TOKEN`: (Optional) Telegram bot token for instant push notifications
    - `TELEGRAM_CHAT_ID`: (Optional) Telegram chat ID
    - `DASHBOARD_USERNAME`: `admin`

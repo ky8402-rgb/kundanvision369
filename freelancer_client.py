@@ -9,12 +9,21 @@ FREELANCER_BASE_URL = "https://api.freelancer.com/api"
 
 class FreelancerClient:
     def __init__(self, access_token: Optional[str] = None):
-        self.access_token = access_token or os.getenv("FREELANCER_ACCESS_TOKEN", "")
+        self.access_token = (
+            access_token
+            or os.getenv("FREELANCER_ACCESS_TOKEN")
+            or os.getenv("FREELANCER_AUTH_TOKEN")
+            or os.getenv("FREELANCER_SESSION")
+            or "3PKsiB3m736mE0wnirnHeLTUzLP1xc"
+        ).strip()
         self.headers = {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "User-Agent": "FreelanceAutoBidder/1.0 (+https://kundanvision369.onrender.com)"
         }
         if self.access_token:
             self.headers["freelancer-oauth-v1"] = self.access_token
+            self.headers["Authorization"] = f"Bearer {self.access_token}"
+            self.headers["Cookie"] = f"freelancer_session={self.access_token}; auth_token={self.access_token}"
 
     def is_configured(self) -> bool:
         return bool(self.access_token and len(self.access_token) > 10)
