@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { getPlatformStatus, PlatformConnectionStatus, fetchRemoteOKJobs } from '../services/api';
+import { getPlatformStatus, PlatformConnectionStatus, fetchRemoteOKJobs, apiUrl } from '../services/api';
 
 interface PlatformCredentialsModalProps {
   isOpen: boolean;
@@ -45,7 +45,7 @@ export default function PlatformCredentialsModal({
   const handleSyncPlatform = async (platformName: 'RemoteOK' | 'WeWorkRemotely' | 'FlexJobs') => {
     setIsSyncing(platformName);
     try {
-      const res = await fetch('/api/platform/jobs/sync', {
+      const res = await fetch(apiUrl('/api/platform/jobs/sync'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ platform: platformName })

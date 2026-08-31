@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Chart from 'chart.js/auto';
+import { BACKEND_BASE_URL, apiUrl } from '../services/api';
 
 export interface FreelancerBid {
   id: string;
@@ -85,7 +86,7 @@ export const FreelancerMetricsSection: React.FC<FreelancerMetricsSectionProps> =
   const packageBarChartRef = useRef<HTMLCanvasElement | null>(null);
   const packageBarChartInstance = useRef<Chart | null>(null);
 
-  const BACKEND_BASE = 'https://gigpilot-backend-g4j0.onrender.com';
+  const BACKEND_BASE = BACKEND_BASE_URL;
 
   const fetchBidsData = async () => {
     try {
@@ -117,7 +118,7 @@ export const FreelancerMetricsSection: React.FC<FreelancerMetricsSectionProps> =
         console.log('Direct Render backend query notice, checking local proxy:', e);
       }
 
-      const res = await fetch('/api/freelancer/stats');
+      const res = await fetch(apiUrl('/api/freelancer/stats'));
       if (res.ok) {
         const data = await res.json();
         if (data.success) {
@@ -134,7 +135,7 @@ export const FreelancerMetricsSection: React.FC<FreelancerMetricsSectionProps> =
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch('/api/freelancer/settings');
+      const res = await fetch(apiUrl('/api/freelancer/settings'));
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.settings) {
@@ -148,7 +149,7 @@ export const FreelancerMetricsSection: React.FC<FreelancerMetricsSectionProps> =
 
   const fetchAuthStatus = async () => {
     try {
-      const res = await fetch('/api/freelancer/auth-status');
+      const res = await fetch(apiUrl('/api/freelancer/auth-status'));
       if (res.ok) {
         const data = await res.json();
         if (data.authStatus) {
@@ -172,7 +173,7 @@ export const FreelancerMetricsSection: React.FC<FreelancerMetricsSectionProps> =
     setSaveSuccessMsg(null);
 
     try {
-      const res = await fetch('/api/freelancer/settings', {
+      const res = await fetch(apiUrl('/api/freelancer/settings'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),

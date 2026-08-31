@@ -1,4 +1,4 @@
-name: Deploy to Render
+name: Test and Deploy to Render
 
 on:
   push:
@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-and-deploy:
-    name: Build Verification & Render Deployment Trigger
+  test-and-deploy:
+    name: Automated Testing, Build Verification & Render Deploy Trigger
     runs-on: ubuntu-latest
 
     steps:
@@ -26,9 +26,12 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci || npm install
 
-      - name: Build Application
+      - name: Run Automated Type Tests & Linting
+        run: npm test
+
+      - name: Build Application (Frontend + Backend bundle)
         run: npm run build
 
       - name: Trigger Render Deployment via Render API / Deploy Hook
@@ -84,4 +87,3 @@ jobs:
             echo "Note: If your Render Web Service is directly connected to this GitHub repo, Render auto-deploys on push to main natively."
             exit 0
           fi
-

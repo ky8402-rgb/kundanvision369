@@ -114,10 +114,10 @@ router.get('/status', async (req, res) => {
 });
 
 /**
- * POST /api/paypal/create-order
+ * POST /api/paypal/create-order & POST /api/paypal/create-payment
  * Create a PayPal v2 Checkout Order or PayPal.me direct invoice link
  */
-router.post('/create-order', async (req, res) => {
+const handleCreateOrder = async (req: express.Request, res: express.Response) => {
   try {
     const { amount, currency, description, clientName, clientEmail, customId } = req.body;
     const numericAmount = Number(amount);
@@ -140,7 +140,7 @@ router.post('/create-order', async (req, res) => {
       type: 'PAYMENT_RECEIVED',
       status: 'info',
       method: 'POST',
-      endpoint: '/api/paypal/create-order',
+      endpoint: req.originalUrl || '/api/paypal/create-order',
       statusCode: 200,
       summary: `Created PayPal order #${order.orderId} for $${numericAmount.toFixed(2)} USD`,
       responsePayload: { orderId: order.orderId, amount: numericAmount, isLiveRest: order.isLiveRest },
@@ -150,6 +150,7 @@ router.post('/create-order', async (req, res) => {
     res.json({
       success: true,
       orderId: order.orderId,
+      id: order.orderId,
       approveUrl: order.approveUrl,
       isLiveRest: order.isLiveRest,
       status: order.status
@@ -158,15 +159,20 @@ router.post('/create-order', async (req, res) => {
     console.error('PayPal create-order error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
-});
+};
+
+router.post('/create-order', handleCreateOrder);
+router.post('/create-payment', handleCreateOrder);
+router.post('/orders', handleCreateOrder);
 
 /**
- * POST /api/paypal/capture-order
+ * POST /api/paypal/capture-order & POST /api/paypal/capture-payment & POST /api/paypal/orders/:orderId/capture
  * Capture a PayPal checkout order, route funds to main platform wallet, and automatically initialize WorkOrder in PostgreSQL
  */
-router.post('/capture-order', async (req, res) => {
+const handleCaptureOrder = async (req: express.Request, res: express.Response) => {
   try {
-    const { orderId, amount, clientName, clientEmail, title, description, userId } = req.body;
+    const orderId = req.params.orderId || req.body.orderId || req.body.orderID;
+    const { amount, clientName, clientEmail, title, description, userId } = req.body;
     if (!orderId) {
       return res.status(400).json({ success: false, error: 'orderId is required' });
     }
@@ -194,7 +200,7 @@ router.post('/capture-order', async (req, res) => {
       type: 'PAYMENT_RECEIVED',
       status: 'success',
       method: 'POST',
-      endpoint: '/api/paypal/capture-order',
+      endpoint: req.originalUrl || '/api/paypal/capture-order',
       statusCode: 200,
       summary: `PayPal Payment Captured & Work Order Initialized: $${capturedAmount.toFixed(2)} USD from ${payerEmail} (Order: ${orderId})`,
       responsePayload: {
@@ -225,6 +231,43 @@ router.post('/capture-order', async (req, res) => {
   } catch (err: any) {
     console.error('PayPal capture-order error:', err);
     res.status(500).json({ success: false, error: err.message });
+  }
+};
+
+router.post('/capture-order', handleCaptureOrder);
+router.post('/capture-payment', handleCaptureOrder);
+router.post('/orders/:orderId/capture', handleCaptureOrder);
+
+/**
+ * GET /api/paypal/transactions
+ * Fetch recent PayPal transactions and completed work orders
+ */
+router.get('/transactions', async (req, res) => {
+  try {
+    const workOrders = await prisma.workOrder.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    }).catch(() => []);
+
+    const transactions = workOrders.map((wo: any) => ({
+      id: wo.id,
+      orderId: wo.paypalOrderId || `ORD-${wo.id}`,
+      amount: wo.totalAmount || 0,
+      currency: wo.currency || 'USD',
+      status: wo.paymentStatus === 'PAID' ? 'completed' : 'pending',
+      payerName: wo.clientName || 'Client',
+      payerEmail: wo.clientEmail || 'client@example.com',
+      date: wo.createdAt ? new Date(wo.createdAt).toISOString() : new Date().toISOString(),
+      description: wo.title || 'Freelance Milestone',
+      paymentSource: 'paypal_wallet'
+    }));
+
+    res.json({
+      success: true,
+      transactions
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message, transactions: [] });
   }
 });
 

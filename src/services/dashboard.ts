@@ -1,7 +1,7 @@
 // ============================================
 // CONFIGURATION - Live Render Backend URL
 // ============================================
-export const API_BASE_URL = 'https://gigpilot-backend-g4j0.onrender.com';
+export const API_BASE_URL = 'https://gigpilot-backend.onrender.com';
 
 // ============================================
 // FETCH FUNCTIONS

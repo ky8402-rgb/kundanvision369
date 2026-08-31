@@ -108,8 +108,21 @@ export async function getPayPalSdkV6Instance(config?: PayPalSdkV6Config): Promis
   return sdkInitPromise;
 }
 
+export const BACKEND_BASE_URL = 'https://gigpilot-backend.onrender.com';
+
 /**
- * Creates an order on the backend via /api/paypal/create-order
+ * Helper to dynamically resolve API base URL for Render or same-origin deployment
+ */
+export function getApiBaseUrl(): string {
+  const envUrl = (import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.VITE_API_BASE_URL || (import.meta as any).env?.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  return BACKEND_BASE_URL;
+}
+
+/**
+ * Creates an order on the backend via /api/paypal/create-order or /api/create-order
  */
 export async function createBackendOrder(params: {
   amount: number;
@@ -119,7 +132,10 @@ export async function createBackendOrder(params: {
   clientEmail?: string;
   customId?: string;
 }): Promise<{ orderId: string; approveUrl?: string; isLiveRest?: boolean }> {
-  const response = await fetch('/api/paypal/create-order', {
+  const baseUrl = getApiBaseUrl();
+  const endpoint = `${baseUrl}/api/paypal/create-order`;
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -133,23 +149,43 @@ export async function createBackendOrder(params: {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to create PayPal order: ${response.statusText}`);
+    // Try fallback alias /api/create-order
+    try {
+      const fallbackRes = await fetch(`${baseUrl}/api/create-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: params.amount,
+          currency: params.currency || 'USD',
+          description: params.description || 'Freelance Milestone Payment'
+        })
+      });
+      if (fallbackRes.ok) {
+        const fbData = await fallbackRes.json();
+        return {
+          orderId: fbData.orderId || fbData.id || `ORD-${Date.now()}`,
+          approveUrl: fbData.approveUrl,
+          isLiveRest: fbData.isLiveRest
+        };
+      }
+    } catch {}
+    throw new Error(`Failed to create PayPal order: ${response.statusText} (${response.status})`);
   }
 
   const data = await response.json();
-  if (!data.success && !data.orderId) {
+  if (!data.success && !data.orderId && !data.id) {
     throw new Error(data.error || 'PayPal order creation failed');
   }
 
   return {
-    orderId: data.orderId || `ORD-V6-${Date.now()}`,
+    orderId: data.orderId || data.id || `ORD-V6-${Date.now()}`,
     approveUrl: data.approveUrl,
     isLiveRest: data.isLiveRest
   };
 }
 
 /**
- * Captures an order on the backend via /api/paypal/capture-order
+ * Captures an order on the backend via /api/paypal/capture-order or /api/capture-payment
  */
 export async function captureBackendOrder(params: {
   orderId: string;
@@ -160,14 +196,28 @@ export async function captureBackendOrder(params: {
   description?: string;
   userId?: string;
 }): Promise<any> {
-  const response = await fetch('/api/paypal/capture-order', {
+  const baseUrl = getApiBaseUrl();
+  const endpoint = `${baseUrl}/api/paypal/capture-order`;
+
+  const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params)
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to capture PayPal order: ${response.statusText}`);
+    // Try fallback alias /api/capture-payment
+    try {
+      const fbRes = await fetch(`${baseUrl}/api/capture-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      if (fbRes.ok) {
+        return await fbRes.json();
+      }
+    } catch {}
+    throw new Error(`Failed to capture PayPal order: ${response.statusText} (${response.status})`);
   }
 
   const data = await response.json();
@@ -291,7 +341,9 @@ export async function configurePayPalButton(
     const createOrderPromiseReference = createOrder();
     const presentationModesToTry = ['payment-handler', 'popup', 'modal'];
 
-    for (const presentationMode of presentationModesToTry) {
+    for (let i = 0; i < presentationModesToTry.length; i++) {
+      const presentationMode = presentationModesToTry[i];
+      const isLastMode = i === presentationModesToTry.length - 1;
       try {
         if (onPresentationModeChange) {
           onPresentationModeChange(presentationMode);
@@ -304,14 +356,13 @@ export async function configurePayPalButton(
         break;
       } catch (error: any) {
         console.warn(`[PayPal SDK v6] Mode ${presentationMode} failed:`, error?.message || error);
-        // Try another presentationMode for a recoverable error
-        if (error && error.isRecoverable) {
+        // If not the last presentation mode, continue to fallback
+        if (!isLastMode) {
           continue;
         }
         if (onError) {
           onError(error);
         }
-        throw error;
       }
     }
   };

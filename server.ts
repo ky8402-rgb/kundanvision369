@@ -27,6 +27,17 @@ import {
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// CORS & Preflight middleware
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Origin", "*");
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, paypal-transmission-sig, x-webhook-signature, x-paypal-webhook-id");
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(
   express.json({
     verify: (req: any, _res, buf) => {
@@ -41,7 +52,9 @@ app.use(
 app.use("/api/remoteok", remoteokRoutes);
 
 // 2. PayPal Gateway & Invoicing Processing Routes (Live Standard PayPal REST API)
+// Mounted on both /api/paypal and /api for universal frontend compatibility
 app.use("/api/paypal", paypalRoutes);
+app.use("/api", paypalRoutes);
 
 // 3. Premium Leads & Lead Scoring Routes
 app.use("/api/leads", leadsRoutes);

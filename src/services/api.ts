@@ -1,5 +1,30 @@
 import { FreelanceJob, FreelancerProfile, GeneratedProposal } from '../types';
 
+/**
+ * Render Backend Base URL for GigPilot Autonomous Autopilot & Payment Gateway
+ */
+export const BACKEND_BASE_URL = 'https://gigpilot-backend.onrender.com';
+
+/**
+ * Helper to dynamically resolve API base URL for Render or same-origin deployment
+ */
+export function getApiBaseUrl(): string {
+  const envUrl = (import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.VITE_API_BASE_URL || (import.meta as any).env?.VITE_API_URL;
+  if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
+    return envUrl.trim().replace(/\/+$/, '');
+  }
+  return BACKEND_BASE_URL;
+}
+
+/**
+ * Formats full API URL prefixed with BACKEND_BASE_URL
+ */
+export function apiUrl(endpoint: string): string {
+  const base = getApiBaseUrl();
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+  return `${base}${cleanEndpoint}`;
+}
+
 export const INDIAN_STATES: Record<string, string> = {
   '01': 'Jammu & Kashmir',
   '02': 'Himachal Pradesh',
@@ -61,7 +86,7 @@ export async function generateAIProposal(
   pricingStrategy?: string
 ): Promise<GeneratedProposal> {
   try {
-    const res = await fetch('/api/proposals/generate', {
+    const res = await fetch(apiUrl('/api/proposals/generate'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ job, profile, tone, customInstructions, pricingStrategy })
@@ -99,7 +124,7 @@ export async function analyzeJobWithAI(
   profile: FreelancerProfile
 ): Promise<JobAnalysisResult> {
   try {
-    const res = await fetch('/api/jobs/analyze', {
+    const res = await fetch(apiUrl('/api/jobs/analyze'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ job, profile })
@@ -138,7 +163,7 @@ export async function generateClientReply(
   goal?: string
 ): Promise<{ reply: string; strategyNotes: string }> {
   try {
-    const res = await fetch('/api/client-negotiation/reply', {
+    const res = await fetch(apiUrl('/api/client-negotiation/reply'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ clientMessage, jobContext, currentQuote, goal })
@@ -162,7 +187,7 @@ export async function optimizeProfileWithAI(
   winRate: string
 ): Promise<any[]> {
   try {
-    const res = await fetch('/api/profile/optimize', {
+    const res = await fetch(apiUrl('/api/profile/optimize'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile, recentBidsCount, winRate })
@@ -228,7 +253,7 @@ export interface PlatformConnectionStatus {
 
 export async function getPlatformStatus(): Promise<PlatformConnectionStatus> {
   try {
-    const res = await fetch('/api/platform/status');
+    const res = await fetch(apiUrl('/api/platform/status'));
     const data = await res.json();
     if (data.success && data.status) {
       return data.status;
@@ -332,7 +357,7 @@ export async function submitLivePlatformBid(orderId: number | string, bidData: {
     } else {
       console.warn(`[GigPilot Backend] Warning: ${BACKEND_BASE_URL}/api/cron/find-and-bid responded with HTTP ${res.status}`);
     }
-    const fallbackRes = await fetch('/api/platforms/submit-bid', {
+    const fallbackRes = await fetch(apiUrl('/api/platforms/submit-bid'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderId, ...bidData })
@@ -362,7 +387,7 @@ export async function fetchBackendWorkOrders(): Promise<any[]> {
     } else {
       console.warn(`[GigPilot Backend] Warning: ${BACKEND_BASE_URL}/api/bids responded with HTTP ${res.status}`);
     }
-    const localRes = await fetch('/api/work-orders');
+    const localRes = await fetch(apiUrl('/api/work-orders'));
     const localData = await localRes.json();
     if (localData.success && Array.isArray(localData.orders)) {
       return localData.orders;
@@ -371,7 +396,7 @@ export async function fetchBackendWorkOrders(): Promise<any[]> {
   } catch (err: any) {
     console.warn(`[GigPilot Backend] Backend unreachable at ${BACKEND_BASE_URL}/api/bids. Error:`, err?.message || err);
     try {
-      const localRes = await fetch('/api/work-orders');
+      const localRes = await fetch(apiUrl('/api/work-orders'));
       const localData = await localRes.json();
       if (localData.success && Array.isArray(localData.orders)) {
         return localData.orders;
@@ -383,7 +408,7 @@ export async function fetchBackendWorkOrders(): Promise<any[]> {
 
 export async function completeBackendWorkOrder(orderId: number | string): Promise<{ success: boolean; payoutAmount?: number; message?: string }> {
   try {
-    const res = await fetch('/api/work-orders/complete', {
+    const res = await fetch(apiUrl('/api/work-orders/complete'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderId })
@@ -396,7 +421,7 @@ export async function completeBackendWorkOrder(orderId: number | string): Promis
 
 export async function acceptBackendWorkOrder(orderId: number | string): Promise<{ success: boolean; message?: string; order?: any }> {
   try {
-    const res = await fetch('/api/work-orders/accept', {
+    const res = await fetch(apiUrl('/api/work-orders/accept'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ orderId })
@@ -425,7 +450,7 @@ export interface RemoteOKJob {
 
 export async function fetchRemoteOKJobs(): Promise<RemoteOKJob[]> {
   try {
-    const res = await fetch('/api/remoteok/jobs', {
+    const res = await fetch(apiUrl('/api/remoteok/jobs'), {
       headers: { 'Accept': 'application/json' }
     });
     if (!res.ok) {
@@ -532,7 +557,7 @@ export interface PayPalTransactionItem {
 
 export async function fetchPayPalConfig(): Promise<{ success: boolean; config: PayPalConfig; totalReceived: number; transactionCount: number }> {
   try {
-    const res = await fetch('/api/paypal/config');
+    const res = await fetch(apiUrl('/api/paypal/config'));
     return await res.json();
   } catch (e: any) {
     return {
@@ -553,7 +578,7 @@ export async function fetchPayPalConfig(): Promise<{ success: boolean; config: P
 
 export async function savePayPalConfig(config: Partial<PayPalConfig>): Promise<any> {
   try {
-    const res = await fetch('/api/paypal/config', {
+    const res = await fetch(apiUrl('/api/paypal/config'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config)
@@ -572,11 +597,19 @@ export async function createPayPalPayment(params: {
   currency?: string;
 }): Promise<any> {
   try {
-    const res = await fetch('/api/paypal/create-payment', {
+    // Primary endpoint: /api/paypal/create-order, fallback to /api/create-order
+    let res = await fetch(apiUrl('/api/paypal/create-order'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
     });
+    if (!res.ok) {
+      res = await fetch(apiUrl('/api/create-order'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+    }
     return await res.json();
   } catch (e: any) {
     return { success: false, error: e.message };
@@ -593,11 +626,19 @@ export async function capturePayPalPayment(params: {
   currency?: string;
 }): Promise<any> {
   try {
-    const res = await fetch('/api/paypal/capture-payment', {
+    // Primary endpoint: /api/paypal/capture-order, fallback to /api/capture-payment
+    let res = await fetch(apiUrl('/api/paypal/capture-order'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
     });
+    if (!res.ok) {
+      res = await fetch(apiUrl('/api/capture-payment'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+    }
     return await res.json();
   } catch (e: any) {
     return { success: false, error: e.message };
@@ -606,7 +647,7 @@ export async function capturePayPalPayment(params: {
 
 export async function fetchPayPalTransactions(): Promise<{ success: boolean; transactions: PayPalTransactionItem[] }> {
   try {
-    const res = await fetch('/api/paypal/transactions');
+    const res = await fetch(apiUrl('/api/paypal/transactions'));
     return await res.json();
   } catch (e: any) {
     return { success: false, transactions: [] };
@@ -701,7 +742,7 @@ export async function fetchActivityLogs(filter?: {
     if (filter?.search) params.set('search', filter.search);
     if (filter?.limit) params.set('limit', String(filter.limit));
 
-    const url = `/api/activity-logs${params.toString() ? `?${params.toString()}` : ''}`;
+    const url = apiUrl(`/api/activity-logs${params.toString() ? `?${params.toString()}` : ''}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
@@ -751,7 +792,7 @@ export async function simulateActivityWebhook(params: {
   signature?: string;
 }): Promise<{ success: boolean; message?: string; event?: ActivityLogItem; error?: string }> {
   try {
-    const res = await fetch('/api/activity-logs/simulate', {
+    const res = await fetch(apiUrl('/api/activity-logs/simulate'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -788,7 +829,7 @@ export interface SignatureVerificationResult {
 
 export async function fetchWebhookSecretConfig(): Promise<WebhookSecretConfig> {
   try {
-    const res = await fetch('/api/activity-logs/webhook-secret-config');
+    const res = await fetch(apiUrl('/api/activity-logs/webhook-secret-config'));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err) {
@@ -806,7 +847,7 @@ export async function fetchWebhookSecretConfig(): Promise<WebhookSecretConfig> {
 
 export async function updateWebhookSecret(secret: string): Promise<{ success: boolean; message?: string; error?: string }> {
   try {
-    const res = await fetch('/api/activity-logs/update-webhook-secret', {
+    const res = await fetch(apiUrl('/api/activity-logs/update-webhook-secret'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ secret })
@@ -826,7 +867,7 @@ export async function verifyWebhookSignatureAPI(params: {
   toleranceSeconds?: number;
 }): Promise<{ success: boolean; verification: SignatureVerificationResult }> {
   try {
-    const res = await fetch('/api/activity-logs/verify-signature', {
+    const res = await fetch(apiUrl('/api/activity-logs/verify-signature'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -866,7 +907,7 @@ export async function generateWebhookSignatureAPI(params: {
   algorithm?: string;
 }): Promise<{ success: boolean; signature: string; rawHex: string; headerName: string }> {
   try {
-    const res = await fetch('/api/activity-logs/generate-signature', {
+    const res = await fetch(apiUrl('/api/activity-logs/generate-signature'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params)
@@ -922,7 +963,7 @@ export async function computeClientHmacSha256(secret: string, payload: any): Pro
 
 export async function clearActivityLogs(): Promise<{ success: boolean; message?: string }> {
   try {
-    const res = await fetch('/api/activity-logs/clear', { method: 'POST' });
+    const res = await fetch(apiUrl('/api/activity-logs/clear'), { method: 'POST' });
     return await res.json();
   } catch (err: any) {
     return { success: false };
@@ -959,7 +1000,7 @@ export interface PlatformConnectivityResponse {
 
 export async function fetchPlatformConnectivity(): Promise<PlatformConnectivityResponse> {
   try {
-    const res = await fetch('/api/activity-logs/connectivity');
+    const res = await fetch(apiUrl('/api/activity-logs/connectivity'));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.json();
   } catch (err: any) {
@@ -1113,7 +1154,7 @@ export async function fetchPayPalWorkOrders(): Promise<{
   success: boolean;
   workOrders: PayPalWorkOrderItem[];
 }> {
-  const res = await fetch('/api/paypal/work-orders');
+  const res = await fetch(apiUrl('/api/paypal/work-orders'));
   if (!res.ok) {
     throw new Error('Failed to retrieve PostgreSQL work orders');
   }
@@ -1197,7 +1238,7 @@ export async function fetchScoredLeadsFeed(params?: {
   if (params?.category) query.set('category', params.category);
   if (params?.refresh) query.set('refresh', 'true');
 
-  const res = await fetch(`/api/leads/feed?${query.toString()}`);
+  const res = await fetch(apiUrl(`/api/leads/feed?${query.toString()}`));
   if (!res.ok) {
     throw new Error('Failed to fetch scored leads');
   }
@@ -1211,7 +1252,7 @@ export async function bulkAnalyzeLeads(leadIds?: string[]): Promise<{
   error?: string;
   code?: string;
 }> {
-  const res = await fetch('/api/leads/bulk-analyze', {
+  const res = await fetch(apiUrl('/api/leads/bulk-analyze'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ leadIds }),
@@ -1234,7 +1275,7 @@ export async function autoBidLeads(leadIds?: string[]): Promise<{
   error?: string;
   code?: string;
 }> {
-  const res = await fetch('/api/leads/auto-bid', {
+  const res = await fetch(apiUrl('/api/leads/auto-bid'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ leadIds }),
@@ -1262,7 +1303,7 @@ export async function fetchKeywordAlerts(): Promise<{
     lastAlertSentAt?: string;
   }>;
 }> {
-  const res = await fetch('/api/leads/alerts');
+  const res = await fetch(apiUrl('/api/leads/alerts'));
   if (!res.ok) throw new Error('Failed to load keyword alerts');
   return res.json();
 }
@@ -1273,7 +1314,7 @@ export async function createKeywordAlert(data: {
   category?: string;
   email?: string;
 }): Promise<any> {
-  const res = await fetch('/api/leads/alerts', {
+  const res = await fetch(apiUrl('/api/leads/alerts'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -1289,12 +1330,12 @@ export async function createKeywordAlert(data: {
 }
 
 export async function deleteKeywordAlert(alertId: string): Promise<any> {
-  const res = await fetch(`/api/leads/alerts/${alertId}`, { method: 'DELETE' });
+  const res = await fetch(apiUrl(`/api/leads/alerts/${alertId}`), { method: 'DELETE' });
   return res.json();
 }
 
 export async function testSendKeywordAlert(email: string, keyword: string): Promise<any> {
-  const res = await fetch('/api/leads/alerts/test-send', {
+  const res = await fetch(apiUrl('/api/leads/alerts/test-send'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, keyword }),
@@ -1314,7 +1355,7 @@ export async function fetchSubscriptionTiers(): Promise<{
     limits: any;
   }>;
 }> {
-  const res = await fetch('/api/subscription/tiers');
+  const res = await fetch(apiUrl('/api/subscription/tiers'));
   return res.json();
 }
 
@@ -1324,7 +1365,7 @@ export async function createSubscriptionCheckout(plan: 'pro' | 'enterprise'): Pr
   isSimulated?: boolean;
   plan: string;
 }> {
-  const res = await fetch('/api/subscription/checkout', {
+  const res = await fetch(apiUrl('/api/subscription/checkout'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ plan }),
@@ -1393,13 +1434,13 @@ export interface LeadNotificationStatusResponse {
 }
 
 export async function fetchLeadNotificationStatus(): Promise<LeadNotificationStatusResponse> {
-  const res = await fetch('/api/notifications/status');
+  const res = await fetch(apiUrl('/api/notifications/status'));
   if (!res.ok) throw new Error('Failed to load lead notification status');
   return res.json();
 }
 
 export async function savePlatformCookies(platform: 'upwork' | 'freelancer', cookies: string): Promise<any> {
-  const res = await fetch('/api/notifications/cookies', {
+  const res = await fetch(apiUrl('/api/notifications/cookies'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ platform, cookies }),
@@ -1410,7 +1451,7 @@ export async function savePlatformCookies(platform: 'upwork' | 'freelancer', coo
 }
 
 export async function saveNotificationConfig(config: any): Promise<any> {
-  const res = await fetch('/api/notifications/config', {
+  const res = await fetch(apiUrl('/api/notifications/config'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
@@ -1421,7 +1462,7 @@ export async function saveNotificationConfig(config: any): Promise<any> {
 }
 
 export async function sendTestTelegramPush(lead?: any): Promise<any> {
-  const res = await fetch('/api/notifications/test-telegram', {
+  const res = await fetch(apiUrl('/api/notifications/test-telegram'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(lead || {}),
@@ -1432,7 +1473,7 @@ export async function sendTestTelegramPush(lead?: any): Promise<any> {
 }
 
 export async function sendTestEmailPush(lead?: any): Promise<any> {
-  const res = await fetch('/api/notifications/test-email', {
+  const res = await fetch(apiUrl('/api/notifications/test-email'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(lead || {}),
@@ -1443,14 +1484,14 @@ export async function sendTestEmailPush(lead?: any): Promise<any> {
 }
 
 export async function triggerHeadlessPoll(): Promise<any> {
-  const res = await fetch('/api/notifications/daemon/poll', { method: 'POST' });
+  const res = await fetch(apiUrl('/api/notifications/daemon/poll'), { method: 'POST' });
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || 'Failed to poll headless feed');
   return data;
 }
 
 export async function toggleAggregatorDaemon(running?: boolean): Promise<any> {
-  const res = await fetch('/api/notifications/daemon/toggle', {
+  const res = await fetch(apiUrl('/api/notifications/daemon/toggle'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ running }),
@@ -1459,12 +1500,12 @@ export async function toggleAggregatorDaemon(running?: boolean): Promise<any> {
 }
 
 export async function fetchPushedNotificationsHistory(): Promise<any> {
-  const res = await fetch('/api/notifications/history');
+  const res = await fetch(apiUrl('/api/notifications/history'));
   return res.json();
 }
 
 export async function createSpeedCheckout(plan: 'pro_speed' | 'ultra_alpha'): Promise<any> {
-  const res = await fetch('/api/notifications/speed-checkout', {
+  const res = await fetch(apiUrl('/api/notifications/speed-checkout'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ plan }),
@@ -1490,7 +1531,7 @@ export async function fetchPayPalGatewayConfig(): Promise<{
     isConfigured: boolean;
   };
 }> {
-  const res = await fetch('/api/paypal/config');
+  const res = await fetch(apiUrl('/api/paypal/config'));
   return res.json();
 }
 
@@ -1502,7 +1543,7 @@ export async function savePayPalGatewayConfig(payload: {
   paypalMeUsername?: string;
   currency?: string;
 }): Promise<any> {
-  const res = await fetch('/api/paypal/config', {
+  const res = await fetch(apiUrl('/api/paypal/config'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -1525,11 +1566,18 @@ export async function createPayPalCheckoutOrder(payload: {
   status: string;
   error?: string;
 }> {
-  const res = await fetch('/api/paypal/create-order', {
+  let res = await fetch(apiUrl('/api/paypal/create-order'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
+  if (!res.ok) {
+    res = await fetch(apiUrl('/api/create-order'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  }
   return res.json();
 }
 
@@ -1546,11 +1594,18 @@ export async function capturePayPalCheckoutOrder(payload: {
   message?: string;
   error?: string;
 }> {
-  const res = await fetch('/api/paypal/capture-order', {
+  let res = await fetch(apiUrl('/api/paypal/capture-order'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
   });
+  if (!res.ok) {
+    res = await fetch(apiUrl('/api/capture-payment'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  }
   return res.json();
 }
 
@@ -1565,7 +1620,7 @@ export async function disbursePayPalPayout(payload: {
   message?: string;
   error?: string;
 }> {
-  const res = await fetch('/api/paypal/payout', {
+  const res = await fetch(apiUrl('/api/paypal/payout'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -1592,7 +1647,7 @@ export interface DatabaseStatus {
 }
 
 export async function fetchDatabaseStatus(): Promise<DatabaseStatus> {
-  const res = await fetch('/api/db/status');
+  const res = await fetch(apiUrl('/api/db/status'));
   const data = await res.json();
   return data;
 }
@@ -1615,7 +1670,7 @@ export interface UserAuthStatus {
 
 export async function fetchCurrentUser(email: string = 'ky8402@gmail.com'): Promise<{ success: boolean; user: UserAuthStatus }> {
   try {
-    const res = await fetch(`/api/auth/me?email=${encodeURIComponent(email)}`);
+    const res = await fetch(apiUrl(`/api/auth/me?email=${encodeURIComponent(email)}`));
     const data = await res.json();
     return data;
   } catch (err: any) {
@@ -1641,7 +1696,7 @@ export async function requestVerificationEmail(email: string): Promise<{
   devOtpPreview?: string;
   error?: string;
 }> {
-  const res = await fetch('/api/auth/send-verification-email', {
+  const res = await fetch(apiUrl('/api/auth/send-verification-email'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email })
@@ -1657,7 +1712,7 @@ export async function verifyEmailCode(email: string, code: string): Promise<{
   user?: Partial<UserAuthStatus>;
   error?: string;
 }> {
-  const res = await fetch('/api/auth/verify-email', {
+  const res = await fetch(apiUrl('/api/auth/verify-email'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, code })
@@ -1675,7 +1730,7 @@ export async function requestPasswordReset(email: string): Promise<{
   resetToken?: string;
   error?: string;
 }> {
-  const res = await fetch('/api/auth/forgot-password', {
+  const res = await fetch(apiUrl('/api/auth/forgot-password'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email })
@@ -1694,7 +1749,7 @@ export async function submitPasswordReset(payload: {
   message: string;
   error?: string;
 }> {
-  const res = await fetch('/api/auth/reset-password', {
+  const res = await fetch(apiUrl('/api/auth/reset-password'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -1713,7 +1768,7 @@ export async function changeUserPassword(payload: {
   message: string;
   error?: string;
 }> {
-  const res = await fetch('/api/auth/change-password', {
+  const res = await fetch(apiUrl('/api/auth/change-password'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -1722,8 +1777,6 @@ export async function changeUserPassword(payload: {
   if (!res.ok) throw new Error(data.error || 'Failed to change password');
   return data;
 }
-
-export const BACKEND_BASE_URL = 'https://gigpilot-backend-g4j0.onrender.com';
 
 export interface BackendBidItem {
   id: string;
