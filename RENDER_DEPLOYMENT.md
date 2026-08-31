@@ -33,12 +33,12 @@ This project is configured and ready for 1-click or automated Git deployment on 
    | `PAYPAL_ME_USERNAME` | `ky8402` |
    | `PAYPAL_MODE` | `live` |
    | `PAYPAL_WEBHOOK_ID` | `2BL477687P123401A` |
+   | `PAYPAL_CLIENT_ID` | `ActZcBABekzSaq6kvVL_s3ITIvcc0RsjabBGCmNCJZE0LanSUtxLwOBQjWz8y2_dNhsISLSXOYaz4Ls3` |
+   | `PAYPAL_CLIENT_SECRET` | `EOKsiNxR314HMHXiwyEoT771jbHrRpInGi6Ybh1zIc2DVv7cXApb9NoggUdoVH46RFGekUZWrIC6XIQn` |
    | `FREELANCER_ACCESS_TOKEN` | `3PKsiB3m736mE0wnirnHeLTUzLP1xc` |
    | `FREELANCER_SESSION` | `3PKsiB3m736mE0wnirnHeLTUzLP1xc` |
    | `FREELANCER_AUTH_TOKEN` | `3PKsiB3m736mE0wnirnHeLTUzLP1xc` |
    | `GEMINI_API_KEY` | *(Your Google Gemini API Key from AI Studio)* |
-   | `PAYPAL_CLIENT_ID` | *(Optional: PayPal REST API Client ID)* |
-   | `PAYPAL_CLIENT_SECRET` | *(Optional: PayPal REST API Secret)* |
    | `UPWORK_CLIENT_ID` | *(Optional: Upwork Developer Client ID)* |
    | `UPWORK_CLIENT_SECRET` | *(Optional: Upwork Developer Secret)* |
 
