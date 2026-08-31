@@ -14,7 +14,7 @@ permissions:
 
 # Allow one concurrent deployment
 concurrency:
-  group: "deploy-pipeline"
+  group: "pages-and-render-deploy"
   cancel-in-progress: true
 
 jobs:
@@ -44,11 +44,32 @@ jobs:
       - name: Run TypeScript & Type Verification
         run: npm test
 
+      # Automatically derives repository name for GitHub Pages path prefix (e.g. /<repo-name>/)
+      - name: Determine VITE_BASE_URL for GitHub Pages
+        id: base_url
+        run: |
+          REPO_NAME="${{ github.event.repository.name }}"
+          # If custom repository or user/org site (<user>.github.io), handle base URL
+          if [[ "${{ github.repository }}" == *.github.io ]]; then
+            echo "vite_base=/" >> $GITHUB_OUTPUT
+            echo "Determined GitHub Pages Root Base URL: /"
+          elif [ -n "$REPO_NAME" ]; then
+            echo "vite_base=/${REPO_NAME}/" >> $GITHUB_OUTPUT
+            echo "Determined GitHub Pages Repository Base URL: /${REPO_NAME}/"
+          else
+            echo "vite_base=./" >> $GITHUB_OUTPUT
+            echo "Falling back to relative Base URL: ./"
+          fi
+
       - name: Build Static Frontend for GitHub Pages
         run: npm run build:client
         env:
           NODE_ENV: production
-          VITE_BASE_URL: './'
+          VITE_BASE_URL: ${{ steps.base_url.outputs.vite_base }}
+
+      # Ensures Single-Page Apps (SPA) reload properly on GitHub Pages subroutes
+      - name: Copy index.html to 404.html for SPA Routing
+        run: cp dist/index.html dist/404.html
 
       - name: Upload GitHub Pages Artifact
         uses: actions/upload-pages-artifact@v3
