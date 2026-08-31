@@ -1948,5 +1948,104 @@ export async function withdrawOnFreelancer(
   return withdrawBidEarnings(bidId, numericAmount, platform);
 }
 
+export interface SystemHealthStatus {
+  status: 'healthy' | 'operational' | 'degraded' | 'error';
+  timestamp: string;
+  uptimeSeconds: number;
+  responseTimeMs: number;
+  environment: string;
+  version: string;
+  database: {
+    status: string;
+    connected: boolean;
+    type: string;
+    provider: string;
+    latencyMs: number;
+    message: string;
+    stats: {
+      users: number;
+      transactions: number;
+      workOrders: number;
+      paypalOrders: number;
+    };
+  };
+  sqlite: {
+    status: string;
+    path: string;
+    exists: boolean;
+  };
+  apiKeys: {
+    gemini: {
+      name: string;
+      configured: boolean;
+      status: string;
+      preview: string | null;
+      role: string;
+    };
+    paypal: {
+      name: string;
+      configured: boolean;
+      status: string;
+      mode: string;
+      receiverEmail: string;
+      payPalMeUsername: string;
+      hasApiCredentials: boolean;
+      clientIdConfigured: boolean;
+      clientSecretConfigured: boolean;
+      role: string;
+    };
+    freelancer: {
+      name: string;
+      configured: boolean;
+      status: string;
+      preview: string | null;
+      role: string;
+    };
+    telegram: {
+      name: string;
+      configured: boolean;
+      status: string;
+      role: string;
+    };
+    jwt: {
+      name: string;
+      configured: boolean;
+      status: string;
+      role: string;
+    };
+  };
+  summary: {
+    allSystemsReady: boolean;
+    activeServicesCount: number;
+    totalServicesCount: number;
+  };
+}
+
+/**
+ * Fetches real-time system connectivity and database health diagnostics
+ */
+export async function fetchSystemHealth(): Promise<SystemHealthStatus | null> {
+  try {
+    const res = await fetch(apiUrl('/api/health'));
+    if (!res.ok) {
+      const localRes = await fetch('/api/health');
+      if (localRes.ok) {
+        return await localRes.json();
+      }
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+    }
+    return await res.json();
+  } catch (err) {
+    try {
+      const localRes = await fetch('/api/health');
+      if (localRes.ok) {
+        return await localRes.json();
+      }
+    } catch (_) {}
+    return null;
+  }
+}
+
+
 
 

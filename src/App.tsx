@@ -22,6 +22,7 @@ import { PackageChart } from './components/PackageChart';
 import { BidsTable } from './components/BidsTable';
 import { LeadsTable } from './components/LeadsTable';
 import { WithdrawalSummary } from './components/WithdrawalSummary';
+import { SystemHealthConnectivityCard } from './components/SystemHealthConnectivityCard';
 import { FreelanceJob, GeneratedProposal, ActiveContract, defaultProfile, defaultRules, defaultActiveContracts } from './types';
 import {
   fetchBackendWorkOrders,
@@ -1785,6 +1786,11 @@ export default function App() {
                 </button>
               </div>
             </div>
+
+            {/* Dedicated System Connectivity & Health Diagnostics Widget */}
+            <SystemHealthConnectivityCard
+              onOpenSettings={() => setIsCredentialsModalOpen(true)}
+            />
 
             {/* Stats Grid - Populated from https://gigpilot-backend.onrender.com/api/bids/stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">

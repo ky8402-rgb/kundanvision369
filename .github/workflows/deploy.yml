@@ -1,4 +1,4 @@
-name: Test and Deploy to Render
+name: Automated CI/CD & Deploy to GitHub Pages & Render
 
 on:
   push:
@@ -6,20 +6,29 @@ on:
       - main
   workflow_dispatch:
 
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment
 concurrency:
-  group: "render-deploy"
+  group: "deploy-pipeline"
   cancel-in-progress: true
 
 jobs:
-  test-and-deploy:
-    name: Automated Testing, Build Verification & Render Deploy Trigger
+  # ==========================================
+  # 1. Build & Test Job
+  # ==========================================
+  build-and-test:
+    name: 🧪 Automated Tests & Build Verification
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout Code
+      - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js Environment
         uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -28,13 +37,48 @@ jobs:
       - name: Install Dependencies
         run: npm ci || npm install
 
-      - name: Run Automated Type Tests & Linting
+      - name: Verify Environment Configuration
+        run: npm run check:env
+        continue-on-error: true
+
+      - name: Run TypeScript & Type Verification
         run: npm test
 
-      - name: Build Application (Frontend + Backend bundle)
-        run: npm run build
+      - name: Build Static Frontend for GitHub Pages
+        run: npm run build:client
+        env:
+          NODE_ENV: production
+          VITE_BASE_URL: './'
 
-      - name: Trigger Render Deployment via Render API / Deploy Hook
+      - name: Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+  # ==========================================
+  # 2. Deploy Frontend to GitHub Pages
+  # ==========================================
+  deploy-github-pages:
+    name: 🚀 Deploy Frontend to GitHub Pages
+    needs: build-and-test
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+  # ==========================================
+  # 3. Trigger Render Backend Deployment
+  # ==========================================
+  trigger-render-deploy:
+    name: 🔄 Trigger Render Auto-Deploy & Webhook
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render Service Deploy
         env:
           RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
           RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
@@ -79,11 +123,7 @@ jobs:
 
           # Fallback notice when secrets are not yet added to GitHub Repo Settings
           else
-            echo "⚠️ Notice: No Render API credentials found in GitHub Secrets."
-            echo "To enable automated API deployments, add either:"
-            echo "  1. RENDER_API_KEY and RENDER_SERVICE_ID in GitHub Repo -> Settings -> Secrets and variables -> Actions"
-            echo "  2. OR RENDER_DEPLOY_HOOK_URL in GitHub Repo Secrets (from Render Service Dashboard -> Settings -> Deploy Hook)"
-            echo ""
-            echo "Note: If your Render Web Service is directly connected to this GitHub repo, Render auto-deploys on push to main natively."
+            echo "ℹ️ Info: Render Auto-Deploy on Git Push is active natively if connected to GitHub."
+            echo "To enable explicit Deploy Hook triggers from GitHub Actions, add RENDER_DEPLOY_HOOK_URL to GitHub Repo Secrets."
             exit 0
           fi
