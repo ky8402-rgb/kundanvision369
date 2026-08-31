@@ -55,3 +55,16 @@ Because this repository contains a `render.yaml` blueprint:
 2. Select your repository.
 3. Render will read `render.yaml` and configure the build command, start command, and environment variable schema automatically.
 4. Click **Apply**.
+
+---
+
+## Method 3: Automated GitHub Actions CI/CD Workflow (`.github/workflows/deploy.yml`)
+
+The repository includes a GitHub Actions workflow that automatically validates dependencies, runs `npm run build`, and triggers a deployment to Render on every push to `main`.
+
+### Optional GitHub Secrets Configuration:
+In your GitHub repository, navigate to **Settings** &rarr; **Secrets and variables** &rarr; **Actions** and add either:
+- **`RENDER_API_KEY`**: Your Render API token (generated from *Render Dashboard &rarr; Account Settings &rarr; API Keys*).
+- **`RENDER_SERVICE_ID`**: Your Web Service ID (e.g. `srv-xxxx` from the URL in your Render dashboard).
+- *OR* **`RENDER_DEPLOY_HOOK_URL`**: Your Render Deploy Hook URL (found in *Render Web Service &rarr; Settings &rarr; Deploy Hook*).
+
