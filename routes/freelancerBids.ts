@@ -8,6 +8,7 @@ import {
   getFreelancerRequestHeaders
 } from '../server/freelancerService';
 import { prisma } from '../server/db';
+import { getCache, setCache, clearBidsCache } from '../server/redisCache';
 
 const router = express.Router();
 const dbPath = process.env.SQLITE_DB_PATH || path.join(process.cwd(), 'bids.db');
@@ -156,7 +157,7 @@ const fallbackBids: BidRecord[] = [
   }
 ];
 
-// Helper to query SQLite via python bridge or fallback
+// Helper to query SQLite or PostgreSQL via optimized Prisma queries with select
 async function readBidsFromDb(): Promise<BidRecord[]> {
   const trackingStore = loadBidTracking();
 
@@ -184,10 +185,64 @@ async function readBidsFromDb(): Promise<BidRecord[]> {
         estimatedDays,
         estimated_days: estimatedDays,
         deadline: deadline || null,
-        notes: tr?.notes !== undefined ? tr.notes : '',
+        notes: tr?.notes !== undefined ? tr.notes : (bid.notes || ''),
       };
     });
   };
+
+  // 1. First attempt high-speed Prisma query with lean select fields
+  try {
+    if (prisma && (prisma as any).bid) {
+      const prismaBids = await (prisma as any).bid.findMany({
+        take: 100,
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          jobTitle: true,
+          company: true,
+          clientName: true,
+          platform: true,
+          package: true,
+          amount: true,
+          status: true,
+          workStatus: true,
+          notes: true,
+          jobUrl: true,
+          startedAt: true,
+          estimatedDays: true,
+          deadline: true,
+          submittedAt: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      });
+
+      if (Array.isArray(prismaBids) && prismaBids.length > 0) {
+        const mapped: BidRecord[] = prismaBids.map((b: any) => ({
+          id: b.id,
+          job_title: b.jobTitle || 'Freelance Project',
+          company: b.company || b.clientName || 'Client Org',
+          client_name: b.clientName || b.company || 'Client',
+          platform: b.platform || 'Freelancer',
+          package: b.package || 'Full-Stack Engineering',
+          bid_amount: Number(b.amount) || 499,
+          status: b.status || 'pending',
+          cover_letter: b.notes || 'High-performance engineering deliverable.',
+          job_url: b.jobUrl || (b.id ? `https://freelancer.com/projects/${b.id}` : '#'),
+          submitted_at: b.submittedAt ? new Date(b.submittedAt).toISOString() : new Date().toISOString(),
+          updated_at: b.updatedAt ? new Date(b.updatedAt).toISOString() : new Date().toISOString(),
+          workStatus: b.workStatus || 'Not Started',
+          startedAt: b.startedAt ? new Date(b.startedAt).toISOString() : null,
+          estimatedDays: b.estimatedDays || 7,
+          deadline: b.deadline ? new Date(b.deadline).toISOString() : null,
+          notes: b.notes || '',
+        }));
+        return enrichBids(mapped);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[FreelancerBids] Prisma query notice:', err.message);
+  }
 
   return new Promise((resolve) => {
     // If Python CLI is available, execute small script to output JSON from bids table
@@ -223,11 +278,12 @@ conn.close()
   });
 }
 
-// PATCH /api/bids/:id/status or /api/bids/:id
-router.patch(['/:id/status', '/:id', '/status/:id'], async (req, res) => {
+// Status update handler (PATCH, PUT, POST /api/bids/:id/status or /api/bids/:id)
+const handleBidStatusUpdate = async (req: express.Request, res: express.Response) => {
   try {
     const { id } = req.params;
     const {
+      status,
       workStatus,
       work_status,
       startedAt,
@@ -258,7 +314,6 @@ router.patch(['/:id/status', '/:id', '/status/:id'], async (req, res) => {
         : existing.deadline;
     const targetNotes = notes !== undefined ? notes : existing.notes || '';
 
-    // Task B Logic:
     // When workStatus changes to "In Progress":
     // 1. Automatically set startedAt to new Date() if not already set.
     // 2. Automatically calculate deadline = startedAt + (estimatedDays * 24 * 60 * 60 * 1000) if no deadline is explicitly provided.
@@ -297,6 +352,7 @@ router.patch(['/:id/status', '/:id', '/status/:id'], async (req, res) => {
         await (prisma as any).bid.upsert({
           where: { id },
           update: {
+            ...(status ? { status } : {}),
             workStatus: targetWorkStatus,
             startedAt: targetStartedAt ? new Date(targetStartedAt) : null,
             estimatedDays: targetEstimatedDays,
@@ -305,6 +361,7 @@ router.patch(['/:id/status', '/:id', '/status/:id'], async (req, res) => {
           },
           create: {
             id,
+            status: status || 'pending',
             workStatus: targetWorkStatus,
             startedAt: targetStartedAt ? new Date(targetStartedAt) : null,
             estimatedDays: targetEstimatedDays,
@@ -315,22 +372,36 @@ router.patch(['/:id/status', '/:id', '/status/:id'], async (req, res) => {
       }
     } catch (_) {}
 
+    // Invalidate Redis and in-memory caches immediately
+    await clearBidsCache();
+
     res.json({
       success: true,
       message: `Bid #${id} status updated successfully`,
       bid: {
         id,
+        ...(status ? { status } : {}),
         ...updatedData,
       },
     });
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
-});
+};
 
-// GET /api/freelancer/stats
+// PATCH /api/bids/:id/status, PATCH /api/bids/:id, PUT/POST equivalents
+router.patch(['/:id/status', '/:id', '/status/:id'], handleBidStatusUpdate);
+router.put(['/:id/status', '/:id', '/status/:id'], handleBidStatusUpdate);
+router.post(['/:id/status', '/status/:id'], handleBidStatusUpdate);
+
+// GET /api/freelancer/stats (Cached with Redis/Memory 60s TTL)
 router.get('/stats', async (_req, res) => {
   try {
+    const cachedStats = await getCache('bids:stats');
+    if (cachedStats) {
+      return res.json(cachedStats);
+    }
+
     const bids = await readBidsFromDb();
     const totalBids = bids.length;
     const activeBids = bids.filter((b) => ['active', 'pending', 'viewed', 'interviewing', 'submitted'].includes(b.status?.toLowerCase())).length;
@@ -363,7 +434,7 @@ router.get('/stats', async (_req, res) => {
       }
     });
 
-    res.json({
+    const responseData = {
       success: true,
       stats: {
         totalBids,
@@ -375,23 +446,36 @@ router.get('/stats', async (_req, res) => {
         packageStats,
       },
       bids: bids.slice(0, 30),
-    });
+    };
+
+    await setCache('bids:stats', responseData, 60);
+    res.json(responseData);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
-// GET /api/bids or /api/freelancer/bids
+// GET /api/bids or /api/freelancer/bids (Cached with Redis/Memory 60s TTL)
 router.get(['/', '/bids'], async (req, res) => {
   try {
-    const bids = await readBidsFromDb();
     const limit = Math.min(Number(req.query.limit) || 50, 100);
+    const cacheKey = `bids:list:limit_${limit}:${req.query.format || 'standard'}`;
+    const cachedData = await getCache(cacheKey);
+    if (cachedData) {
+      return res.json(cachedData);
+    }
+
+    const bids = await readBidsFromDb();
     const sliced = bids.slice(0, limit);
-    // Return both top-level array and object format for maximum compatibility
+    
     if (req.query.format === 'raw') {
+      await setCache(cacheKey, sliced, 60);
       return res.json(sliced);
     }
-    res.json({ success: true, bids: sliced, total: bids.length });
+
+    const responsePayload = { success: true, bids: sliced, total: bids.length };
+    await setCache(cacheKey, responsePayload, 60);
+    res.json(responsePayload);
   } catch (err: any) {
     res.status(500).json({ success: false, error: err.message, bids: [] });
   }

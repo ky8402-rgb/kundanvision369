@@ -2090,6 +2090,65 @@ export async function fetchSystemHealth(): Promise<SystemHealthStatus | null> {
   }
 }
 
+export interface AIProposalRequestPayload {
+  jobTitle: string;
+  jobDescription?: string;
+  clientName?: string;
+  budget?: number;
+  skills?: string[];
+  platform?: string;
+}
+
+export interface AIProposalResponsePayload {
+  success: boolean;
+  jobTitle?: string;
+  clientName?: string;
+  proposal: string;
+  generatedAt?: string;
+  model?: string;
+  error?: string;
+}
+
+/**
+ * Generates an AI Proposal using the backend Gemini 3.7 Flash endpoint
+ */
+export async function generateAIProposalBackend(payload: AIProposalRequestPayload): Promise<AIProposalResponsePayload> {
+  const tryUrls = [
+    apiUrl('/api/ai/generate-proposal'),
+    '/api/ai/generate-proposal',
+  ];
+
+  let lastError = 'Failed to connect to AI proposal generation service.';
+
+  for (const targetUrl of tryUrls) {
+    try {
+      const res = await fetch(targetUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data.proposal) {
+          return data;
+        }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        lastError = errJson.error || `HTTP ${res.status}: ${res.statusText}`;
+      }
+    } catch (err: any) {
+      lastError = err.message || lastError;
+    }
+  }
+
+  throw new Error(lastError);
+}
+
+
 
 
 

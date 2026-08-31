@@ -1,29 +1,52 @@
-import React, { useState, useEffect, useRef } from 'react';
-import Chart from 'chart.js/auto';
-import confetti from 'canvas-confetti';
-import { GoogleGenAI } from '@google/genai';
-import PlatformCredentialsModal from './components/PlatformCredentialsModal';
-import { RemoteOKJobsBoard, RemoteOKJobItem } from './components/RemoteOKJobsBoard';
-import { ProposalStudioModal } from './components/ProposalStudioModal';
-import { JobAnalysisModal } from './components/JobAnalysisModal';
-import { ContractsAndInvoices } from './components/ContractsAndInvoices';
-import { RealIncomeHub } from './components/RealIncomeHub';
-import { PremiumLeadsRadar } from './components/PremiumLeadsRadar';
-import { LeadNotificationsHub } from './components/LeadNotificationsHub';
+import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import type { RemoteOKJobItem } from './components/RemoteOKJobsBoard';
 import { SEOHead } from './components/SEOHead';
-import { ActivityLogsView } from './components/ActivityLogsView';
-import { LegalComplianceModal } from './components/LegalComplianceModal';
-import { FreelancerMetricsSection } from './components/FreelancerMetricsSection';
-import { GSTInvoiceModal } from './components/GSTInvoiceModal';
-import { PayPalConnectModal } from './components/PayPalConnectModal';
-import PasswordResetModal from './components/PasswordResetModal';
-import EmailVerificationModal from './components/EmailVerificationModal';
-import { PackageChart } from './components/PackageChart';
-import { BidsTable } from './components/BidsTable';
-import { LeadsTable } from './components/LeadsTable';
-import { WithdrawalSummary } from './components/WithdrawalSummary';
-import { SystemHealthConnectivityCard } from './components/SystemHealthConnectivityCard';
 import { FreelanceJob, GeneratedProposal, ActiveContract, defaultProfile, defaultRules, defaultActiveContracts } from './types';
+
+// Code Splitting: Lazy-loaded Route Views, Dashboard, Invoicing, Analytics and Modal Components
+const WorkOrdersView = lazy(() => import('./components/views/WorkOrdersView').then(m => ({ default: m.WorkOrdersView })));
+const InvoicesView = lazy(() => import('./components/views/InvoicesView').then(m => ({ default: m.InvoicesView })));
+const AnalyticsView = lazy(() => import('./components/views/AnalyticsView').then(m => ({ default: m.AnalyticsView })));
+const DashboardEarningsChart = lazy(() => import('./components/views/DashboardEarningsChart').then(m => ({ default: m.DashboardEarningsChart })));
+
+const PlatformCredentialsModal = lazy(() => import('./components/PlatformCredentialsModal'));
+const RemoteOKJobsBoard = lazy(() => import('./components/RemoteOKJobsBoard').then(m => ({ default: m.RemoteOKJobsBoard })));
+const ProposalStudioModal = lazy(() => import('./components/ProposalStudioModal').then(m => ({ default: m.ProposalStudioModal })));
+const JobAnalysisModal = lazy(() => import('./components/JobAnalysisModal').then(m => ({ default: m.JobAnalysisModal })));
+const ContractsAndInvoices = lazy(() => import('./components/ContractsAndInvoices').then(m => ({ default: m.ContractsAndInvoices })));
+const RealIncomeHub = lazy(() => import('./components/RealIncomeHub').then(m => ({ default: m.RealIncomeHub })));
+const PremiumLeadsRadar = lazy(() => import('./components/PremiumLeadsRadar').then(m => ({ default: m.PremiumLeadsRadar })));
+const LeadNotificationsHub = lazy(() => import('./components/LeadNotificationsHub').then(m => ({ default: m.LeadNotificationsHub })));
+const ActivityLogsView = lazy(() => import('./components/ActivityLogsView').then(m => ({ default: m.ActivityLogsView })));
+const LegalComplianceModal = lazy(() => import('./components/LegalComplianceModal').then(m => ({ default: m.LegalComplianceModal })));
+const FreelancerMetricsSection = lazy(() => import('./components/FreelancerMetricsSection').then(m => ({ default: m.FreelancerMetricsSection })));
+const GSTInvoiceModal = lazy(() => import('./components/GSTInvoiceModal').then(m => ({ default: m.GSTInvoiceModal })));
+const PayPalConnectModal = lazy(() => import('./components/PayPalConnectModal').then(m => ({ default: m.PayPalConnectModal })));
+const PasswordResetModal = lazy(() => import('./components/PasswordResetModal'));
+const EmailVerificationModal = lazy(() => import('./components/EmailVerificationModal'));
+const PackageChart = lazy(() => import('./components/PackageChart').then(m => ({ default: m.PackageChart })));
+const BidsTable = lazy(() => import('./components/BidsTable').then(m => ({ default: m.BidsTable })));
+const LeadsTable = lazy(() => import('./components/LeadsTable').then(m => ({ default: m.LeadsTable })));
+const WithdrawalSummary = lazy(() => import('./components/WithdrawalSummary').then(m => ({ default: m.WithdrawalSummary })));
+const SystemHealthConnectivityCard = lazy(() => import('./components/SystemHealthConnectivityCard').then(m => ({ default: m.SystemHealthConnectivityCard })));
+
+// Dynamic helper for celebratory confetti without bloating the main bundle
+const triggerConfetti = (opts: any) => {
+  import('canvas-confetti').then((m: any) => {
+    const fn = typeof m === 'function' ? m : (m && m.default ? m.default : null);
+    if (typeof fn === 'function') {
+      fn(opts);
+    }
+  }).catch(() => {});
+};
+
+// Sleek, high-performance loading fallback for lazy-loaded sections
+const LazyFallback: React.FC<{ label?: string }> = ({ label = 'Loading section...' }) => (
+  <div className="w-full bg-[#111726]/60 border border-[#1e293b] rounded-2xl p-6 flex flex-col items-center justify-center min-h-[140px] animate-pulse">
+    <div className="w-6 h-6 rounded-full border-2 border-[#4f7cff]/20 border-t-[#4f7cff] animate-spin mb-2"></div>
+    <span className="text-[11px] text-slate-400 font-mono">{label}</span>
+  </div>
+);
 import {
   fetchBackendWorkOrders,
   completeBackendWorkOrder,
@@ -332,16 +355,6 @@ export default function App() {
   });
   const toastTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Canvas Refs for Chart.js
-  const earningsCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const earningsChartInstance = useRef<Chart | null>(null);
-
-  const analyticsDoughnutCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const analyticsDoughnutChartInstance = useRef<Chart | null>(null);
-
-  const analyticsBarCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const analyticsBarChartInstance = useRef<Chart | null>(null);
-
   // Derived Calculations
   const activeOrdersCount = workOrders.filter(o => o.status !== 'completed').length;
   const completionRate = Math.min(100, Math.round((completedOrders / (completedOrders + activeOrdersCount || 1)) * 100));
@@ -364,157 +377,6 @@ export default function App() {
   };
   const random = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
   const randomFloat = (min: number, max: number) => Math.round((Math.random() * (max - min) + min) * 100) / 100;
-
-  // Chart Rendering for Dashboard Line Chart (derived from real transaction logs & daily earnings)
-  useEffect(() => {
-    if (activeTab === 'dashboard' && earningsCanvasRef.current) {
-      const ctx = earningsCanvasRef.current.getContext('2d');
-      if (ctx) {
-        if (earningsChartInstance.current) {
-          earningsChartInstance.current.destroy();
-        }
-
-        const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-        // Calculate dynamic distribution based on real recorded earnings
-        const dayWeights = [0.45, 0.6, 0.72, 0.85, 0.9, 0.95, 1.0];
-        const data = labels.map((_, i) => Math.max(0, parseFloat((todayEarnings * dayWeights[i]).toFixed(2))));
-
-        earningsChartInstance.current = new Chart(ctx, {
-          type: 'line',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Earnings (USD)',
-              data: data,
-              borderColor: '#4f7cff',
-              backgroundColor: 'rgba(79, 124, 255, 0.12)',
-              borderWidth: 2.5,
-              fill: true,
-              tension: 0.3,
-              pointBackgroundColor: '#4f7cff',
-              pointBorderColor: '#0b0d15',
-              pointBorderWidth: 2,
-              pointRadius: 4,
-            }]
-          },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-              legend: { display: false },
-              tooltip: {
-                backgroundColor: '#161b2b',
-                titleColor: '#f0f3fa',
-                bodyColor: '#9aa2bf',
-                borderColor: '#2a3147',
-                borderWidth: 1,
-                padding: 10
-              }
-            },
-            scales: {
-              y: {
-                grid: { color: 'rgba(255, 255, 255, 0.04)' },
-                ticks: { color: '#5d6788', font: { size: 10 } }
-              },
-              x: {
-                grid: { display: false },
-                ticks: { color: '#5d6788', font: { size: 10 } }
-              }
-            }
-          }
-        });
-      }
-    }
-
-    return () => {
-      if (earningsChartInstance.current) {
-        earningsChartInstance.current.destroy();
-        earningsChartInstance.current = null;
-      }
-    };
-  }, [activeTab, todayEarnings]);
-
-  // Chart Rendering for Analytics
-  useEffect(() => {
-    if (activeTab === 'analytics') {
-      // Doughnut
-      if (analyticsDoughnutCanvasRef.current) {
-        const ctx1 = analyticsDoughnutCanvasRef.current.getContext('2d');
-        if (ctx1) {
-          if (analyticsDoughnutChartInstance.current) analyticsDoughnutChartInstance.current.destroy();
-          analyticsDoughnutChartInstance.current = new Chart(ctx1, {
-            type: 'doughnut',
-            data: {
-              labels: ['Web Dev', 'Design', 'Writing', 'Marketing', 'Other'],
-              datasets: [{
-                data: [32, 24, 18, 16, 10],
-                backgroundColor: ['#4f7cff', '#2ecc71', '#f39c12', '#a855f7', '#5d6788'],
-                borderWidth: 0
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: {
-                legend: {
-                  position: 'bottom',
-                  labels: { color: '#9aa2bf', font: { size: 10 }, boxWidth: 10, padding: 12 }
-                }
-              }
-            }
-          });
-        }
-      }
-
-      // Bar Chart
-      if (analyticsBarCanvasRef.current) {
-        const ctx2 = analyticsBarCanvasRef.current.getContext('2d');
-        if (ctx2) {
-          if (analyticsBarChartInstance.current) analyticsBarChartInstance.current.destroy();
-          analyticsBarChartInstance.current = new Chart(ctx2, {
-            type: 'bar',
-            data: {
-              labels: ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'],
-              datasets: [{
-                label: 'Revenue (USD)',
-                data: [320, 410, 380, 520, 490, 610],
-                backgroundColor: 'rgba(79, 124, 255, 0.65)',
-                borderColor: '#4f7cff',
-                borderRadius: 6,
-                borderWidth: 1
-              }]
-            },
-            options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { legend: { display: false } },
-              scales: {
-                y: {
-                  grid: { color: 'rgba(255, 255, 255, 0.04)' },
-                  ticks: { color: '#5d6788', font: { size: 10 } }
-                },
-                x: {
-                  grid: { display: false },
-                  ticks: { color: '#5d6788', font: { size: 10 } }
-                }
-              }
-            }
-          });
-        }
-      }
-    }
-
-    return () => {
-      if (analyticsDoughnutChartInstance.current) {
-        analyticsDoughnutChartInstance.current.destroy();
-        analyticsDoughnutChartInstance.current = null;
-      }
-      if (analyticsBarChartInstance.current) {
-        analyticsBarChartInstance.current.destroy();
-        analyticsBarChartInstance.current = null;
-      }
-    };
-  }, [activeTab]);
 
   // Complete Order
   const completeOrder = async (id: number | string) => {
@@ -557,7 +419,7 @@ export default function App() {
 
     showToast(`✅ Order "${order.title}" completed! +$${fmt(amount)} USD escrow settled.`, 'success');
 
-    confetti({
+    triggerConfetti({
       particleCount: 50,
       spread: 60,
       origin: { y: 0.8 }
@@ -647,8 +509,8 @@ export default function App() {
   };
 
   // Save customized contract amount (for RemoteOK / pending contracts)
-  const saveCustomAmount = (id: number | string) => {
-    const val = parseFloat(editingAmountValue);
+  const saveCustomAmount = (id: number | string, customVal?: number) => {
+    const val = customVal !== undefined ? customVal : parseFloat(editingAmountValue);
     if (isNaN(val) || val < 0) {
       showToast('Please enter a valid amount (>= 0)', 'warning');
       return;
@@ -727,7 +589,7 @@ export default function App() {
     setTransactions(prev => [newTx, ...prev]);
 
     showToast(`✅ $${fmt(amount)} USD transferred to PayPal (${recipient})!`, 'success');
-    confetti({
+    triggerConfetti({
       particleCount: 80,
       spread: 70,
       origin: { y: 0.6 }
@@ -795,7 +657,7 @@ export default function App() {
 
     showToast(`💰 Settled $${fmt(collected)} USD + volume bonus $${fmt(bonus)} USD to PayPal!`, 'success');
 
-    confetti({
+    triggerConfetti({
       particleCount: 90,
       spread: 80,
       origin: { y: 0.6 }
@@ -1789,9 +1651,11 @@ export default function App() {
             </div>
 
             {/* Dedicated System Connectivity & Health Diagnostics Widget */}
-            <SystemHealthConnectivityCard
-              onOpenSettings={() => setIsCredentialsModalOpen(true)}
-            />
+            <Suspense fallback={<LazyFallback label="Loading Connectivity Status..." />}>
+              <SystemHealthConnectivityCard
+                onOpenSettings={() => setIsCredentialsModalOpen(true)}
+              />
+            </Suspense>
 
             {/* Stats Grid - Populated from https://gigpilot-backend.onrender.com/api/bids/stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -1895,78 +1759,88 @@ export default function App() {
                   </span>
                 </div>
               </div>
-              <PackageChart packageCounts={backendStats?.package_counts} isLoading={isBackendLoading} />
+              <Suspense fallback={<LazyFallback label="Loading Package Telemetry..." />}>
+                <PackageChart packageCounts={backendStats?.package_counts} isLoading={isBackendLoading} />
+              </Suspense>
             </div>
 
             {/* Bids Table Section (https://gigpilot-backend.onrender.com/api/bids?limit=50) */}
-            <BidsTable
-              onSelectBid={(bid) => {
-                const jobObj = toFreelanceJob({
-                  id: bid.id,
-                  title: bid.job_title,
-                  platform: bid.platform || 'Freelancer.com',
-                  budget: bid.bid_amount,
-                  description: bid.cover_letter,
-                  clientName: bid.client_name || bid.company,
-                  url: bid.job_url,
-                  tags: [bid.package]
-                });
-                setSelectedProposalJob(jobObj);
-                setIsProposalStudioOpen(true);
-              }}
-              onBidsLoaded={(loadedBids) => {
-                setBackendBids(loadedBids);
-              }}
-              onNotify={(msg, type) => {
-                showToast(msg, type || 'info');
-              }}
-            />
+            <Suspense fallback={<LazyFallback label="Loading Live Bids Telemetry..." />}>
+              <BidsTable
+                onSelectBid={(bid) => {
+                  const jobObj = toFreelanceJob({
+                    id: bid.id,
+                    title: bid.job_title,
+                    platform: bid.platform || 'Freelancer.com',
+                    budget: bid.bid_amount,
+                    description: bid.cover_letter,
+                    clientName: bid.client_name || bid.company,
+                    url: bid.job_url,
+                    tags: [bid.package]
+                  });
+                  setSelectedProposalJob(jobObj);
+                  setIsProposalStudioOpen(true);
+                }}
+                onBidsLoaded={(loadedBids) => {
+                  setBackendBids(loadedBids);
+                }}
+                onNotify={(msg, type) => {
+                  showToast(msg, type || 'info');
+                }}
+              />
+            </Suspense>
 
             {/* Leads Table Section (https://gigpilot-backend.onrender.com/api/leads?limit=20) */}
-            <LeadsTable
-              onSelectLead={(lead) => {
-                const jobObj = toFreelanceJob({
-                  id: String(lead.id || Math.random()),
-                  title: lead.job_title || lead.title || 'Remote Gig',
-                  platform: lead.source || 'RemoteOK',
-                  budget: 350,
-                  description: lead.description || `Scored matched lead for ${lead.company}`,
-                  clientName: lead.company,
-                  url: lead.job_url || lead.url,
-                  tags: [lead.matched_package || lead.package || 'General']
-                });
-                setSelectedProposalJob(jobObj);
-                setIsProposalStudioOpen(true);
-              }}
-            />
+            <Suspense fallback={<LazyFallback label="Loading Leads Telemetry..." />}>
+              <LeadsTable
+                onSelectLead={(lead) => {
+                  const jobObj = toFreelanceJob({
+                    id: String(lead.id || Math.random()),
+                    title: lead.job_title || lead.title || 'Remote Gig',
+                    platform: lead.source || 'RemoteOK',
+                    budget: 350,
+                    description: lead.description || `Scored matched lead for ${lead.company}`,
+                    clientName: lead.company,
+                    url: lead.job_url || lead.url,
+                    tags: [lead.matched_package || lead.package || 'General']
+                  });
+                  setSelectedProposalJob(jobObj);
+                  setIsProposalStudioOpen(true);
+                }}
+              />
+            </Suspense>
 
             {/* Dedicated Freelancer.com SQLite Bids & Win Conversion Telemetry Section */}
-            <FreelancerMetricsSection
-              onOpenProposalModal={(bid) => {
-                const jobObj = toFreelanceJob({
-                  id: bid.id,
-                  title: bid.job_title,
-                  platform: bid.platform || 'Freelancer.com',
-                  budget: bid.bid_amount,
-                  description: bid.cover_letter,
-                  clientName: bid.client_name || bid.company,
-                  url: bid.job_url,
-                  tags: [bid.package]
-                });
-                setSelectedProposalJob(jobObj);
-                setIsProposalStudioOpen(true);
-              }}
-            />
+            <Suspense fallback={<LazyFallback label="Loading Freelancer Metrics..." />}>
+              <FreelancerMetricsSection
+                onOpenProposalModal={(bid) => {
+                  const jobObj = toFreelanceJob({
+                    id: bid.id,
+                    title: bid.job_title,
+                    platform: bid.platform || 'Freelancer.com',
+                    budget: bid.bid_amount,
+                    description: bid.cover_letter,
+                    clientName: bid.client_name || bid.company,
+                    url: bid.job_url,
+                    tags: [bid.package]
+                  });
+                  setSelectedProposalJob(jobObj);
+                  setIsProposalStudioOpen(true);
+                }}
+              />
+            </Suspense>
 
             {/* Platform Earnings & Withdrawal Summary Section */}
-            <WithdrawalSummary
-              bids={backendBids}
-              stats={backendStats}
-              onNotify={(msg, type) => showToast(msg, type)}
-              onWithdrawPlatform={(platformName, amount) => {
-                showToast(`Routing to secure withdrawal gateway for ${platformName} ($${amount.toFixed(2)})`, 'info');
-              }}
-            />
+            <Suspense fallback={<LazyFallback label="Loading Platform Withdrawal Summary..." />}>
+              <WithdrawalSummary
+                bids={backendBids}
+                stats={backendStats}
+                onNotify={(msg, type) => showToast(msg, type)}
+                onWithdrawPlatform={(platformName, amount) => {
+                  showToast(`Routing to secure withdrawal gateway for ${platformName} ($${amount.toFixed(2)})`, 'info');
+                }}
+              />
+            </Suspense>
 
             {/* Panel Grid: Work Orders & Earnings/Wallet */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
@@ -2148,9 +2022,9 @@ export default function App() {
                   </div>
 
                   {/* Chart */}
-                  <div className="h-[180px] w-full relative">
-                    <canvas ref={earningsCanvasRef}></canvas>
-                  </div>
+                  <Suspense fallback={<div className="h-[180px] w-full bg-[#11141f] rounded-xl flex items-center justify-center text-xs text-slate-500 animate-pulse">Loading earnings trajectory...</div>}>
+                    <DashboardEarningsChart todayEarnings={todayEarnings} />
+                  </Suspense>
 
                   {/* Target Progress */}
                   <div className="mt-3 bg-[#11141f] rounded-xl p-3.5 border border-[#2a3147]">
@@ -2378,467 +2252,161 @@ export default function App() {
         {/* ===== TAB: REMOTE OK LIVE JOBS (ZERO AUTH) ===== */}
         {activeTab === 'remoteok' && (
           <div className="space-y-6">
-            <RemoteOKJobsBoard
-              jobs={workOrders.filter(w => w.platform === 'RemoteOK' || w.platform === 'Direct Remote').map(w => ({
-                id: w.id,
-                title: w.title,
-                company: w.clientName || w.category || 'Remote Client',
-                description: w.description || '',
-                url: w.url || '#',
-                tags: w.tags || ['Remote', 'Developer'],
-                location: w.location || 'Worldwide',
-                amount: w.amount || 75.00,
-                category: w.category || 'Development',
-                platform: w.platform || 'RemoteOK',
-                time: w.time || 'Live'
-              }))}
-              profile={userProfile}
-              onImportToOrders={(job) => {
-                const newOrder: WorkOrder = {
-                  id: job.id,
-                  externalId: String(job.id),
-                  title: job.title,
-                  platform: 'RemoteOK',
-                  status: 'pending',
-                  amount: job.amount || 75.00,
-                  category: job.company || 'Remote Dev',
-                  time: job.time || 'Live Stream',
-                  clientName: job.company,
-                  description: job.description,
-                  url: job.url,
-                  location: job.location,
-                  tags: job.tags
-                };
-                setWorkOrders(prev => {
-                  const exists = prev.some(o => String(o.id) === String(newOrder.id));
-                  if (exists) return prev;
-                  return [newOrder, ...prev];
-                });
-                showToast(`✅ "${job.title}" imported into Work Orders!`, 'success');
-              }}
-              onOpenAIProposal={(job) => {
-                const freelanceJob = toFreelanceJob(job);
-                setSelectedProposalJob(freelanceJob);
-                setIsProposalStudioOpen(true);
-              }}
-              onRefreshFeed={syncRemoteOKJobs}
-              isLoading={isSyncingRemoteOK}
-              showToast={showToast}
-            />
+            <Suspense fallback={<LazyFallback label="Loading RemoteOK Jobs Feed..." />}>
+              <RemoteOKJobsBoard
+                jobs={workOrders.filter(w => w.platform === 'RemoteOK' || w.platform === 'Direct Remote').map(w => ({
+                  id: w.id,
+                  title: w.title,
+                  company: w.clientName || w.category || 'Remote Client',
+                  description: w.description || '',
+                  url: w.url || '#',
+                  tags: w.tags || ['Remote', 'Developer'],
+                  location: w.location || 'Worldwide',
+                  amount: w.amount || 75.00,
+                  category: w.category || 'Development',
+                  platform: w.platform || 'RemoteOK',
+                  time: w.time || 'Live'
+                }))}
+                profile={userProfile}
+                onImportToOrders={(job) => {
+                  const newOrder: WorkOrder = {
+                    id: job.id,
+                    externalId: String(job.id),
+                    title: job.title,
+                    platform: 'RemoteOK',
+                    status: 'pending',
+                    amount: job.amount || 75.00,
+                    category: job.company || 'Remote Dev',
+                    time: job.time || 'Live Stream',
+                    clientName: job.company,
+                    description: job.description,
+                    url: job.url,
+                    location: job.location,
+                    tags: job.tags
+                  };
+                  setWorkOrders(prev => {
+                    const exists = prev.some(o => String(o.id) === String(newOrder.id));
+                    if (exists) return prev;
+                    return [newOrder, ...prev];
+                  });
+                  showToast(`✅ "${job.title}" imported into Work Orders!`, 'success');
+                }}
+                onOpenAIProposal={(job) => {
+                  const freelanceJob = toFreelanceJob(job);
+                  setSelectedProposalJob(freelanceJob);
+                  setIsProposalStudioOpen(true);
+                }}
+                onRefreshFeed={syncRemoteOKJobs}
+                isLoading={isSyncingRemoteOK}
+                showToast={showToast}
+              />
+            </Suspense>
           </div>
         )}
 
         {/* ===== TAB 2: WORK ORDERS ===== */}
         {activeTab === 'orders' && (
-          <div className="space-y-4">
-            <div className="bg-[#161b2b] rounded-2xl border border-[#2a3147] p-6 shadow-lg">
-              <div className="flex flex-wrap items-center justify-between pb-4 border-b border-[#2a3147] mb-5 gap-4">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <i className="fas fa-clipboard-list text-[#4f7cff]"></i>
-                    Live Work Orders &amp; Pipeline
-                  </h3>
-                  <p className="text-xs text-[#9aa2bf] mt-0.5">
-                    Real-time contract ingestion from RemoteOK and public remote streams (Zero API keys required)
-                  </p>
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2.5">
-                  <button
-                    onClick={() => setActiveTab('remoteok')}
-                    className="bg-[#1e1730] hover:bg-[#281e42] border border-purple-500/40 text-purple-300 px-3.5 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
-                  >
-                    <i className="fas fa-globe text-[11px] text-purple-400"></i>
-                    <span>+ Explore RemoteOK Feed</span>
-                  </button>
-
-                  <button
-                    onClick={syncRemoteOKJobs}
-                    disabled={isSyncingRemoteOK}
-                    className="bg-[#161b2b] hover:bg-[#1e2438] border border-[#2a3147] hover:border-purple-500/50 text-white px-3.5 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all"
-                  >
-                    <i className={`fas fa-sync-alt text-[11px] ${isSyncingRemoteOK ? 'animate-spin text-purple-300' : 'text-purple-400'}`}></i>
-                    <span>{isSyncingRemoteOK ? 'Syncing...' : 'Sync Feed'}</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setActiveTab('dashboard');
-                      setTimeout(() => {
-                        document.getElementById('manualTitleInput')?.focus();
-                      }, 100);
-                    }}
-                    className="bg-[#4f7cff] hover:bg-[#3d6bf0] text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-1.5 transition-all"
-                  >
-                    <i className="fas fa-plus text-[11px]"></i>
-                    <span>+ Custom Order</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Status Banner */}
-              <div className="mb-4 p-3 rounded-xl bg-[#0d101a] border border-[#20273a] flex flex-wrap items-center justify-between text-xs gap-3">
-                <div className="flex items-center gap-3 text-[#9aa2bf] flex-wrap">
-                  <span className="flex items-center gap-1.5 text-purple-400 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-purple-400 animate-pulse"></span>
-                    RemoteOK Public Feed: Connected (Zero-Auth)
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1.5 text-emerald-400 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                    PayPal Instant Escrow: Ready ({PRIMARY_PAYPAL_EMAIL})
-                  </span>
-                  <span>•</span>
-                  <span className="flex items-center gap-1.5 text-cyan-400 font-medium">
-                    <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
-                    Bank Settlement: Ready (Federal Bank •••• 8763)
-                  </span>
-                </div>
-                <button
-                  onClick={() => setIsCredentialsModalOpen(true)}
-                  className="text-xs text-purple-400 hover:underline font-medium"
-                >
-                  Stream Architecture Info →
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {workOrders.map((order, idx) => (
-                  <div
-                    key={`wo-all-${order.id || idx}-${idx}`}
-                    className={`flex flex-wrap items-center justify-between p-4 bg-[#11141f] rounded-xl border ${
-                      order.platform === 'RemoteOK' ? 'border-purple-500/40 hover:border-purple-400' : 'border-[#2a3147] hover:border-[#4f7cff]'
-                    } transition-all gap-4`}
-                  >
-                    <div className="space-y-1.5 max-w-xl">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-bold text-sm text-white">{order.title}</span>
-                        
-                        {/* Platform Badge */}
-                        <span className={`text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded-full border ${
-                          order.platform === 'RemoteOK'
-                            ? 'bg-purple-500/10 text-purple-300 border-purple-500/30'
-                            : 'bg-blue-500/10 text-blue-300 border-blue-500/30'
-                        }`}>
-                          {order.platform || 'RemoteOK'}
-                        </span>
-
-                        <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                          order.status === 'completed'
-                            ? 'bg-[#2ecc71]/20 text-[#2ecc71]'
-                            : order.status === 'urgent'
-                            ? 'bg-[#e74c3c]/20 text-[#e74c3c]'
-                            : order.status === 'in-progress'
-                            ? 'bg-[#4f7cff]/20 text-[#4f7cff]'
-                            : 'bg-[#f39c12]/20 text-[#f39c12]'
-                        }`}>
-                          {order.status}
-                        </span>
-
-                        {order.location && (
-                          <span className="text-[10px] text-slate-400 bg-[#161b2b] px-2 py-0.5 rounded-md border border-[#2a3147]">
-                            <i className="fas fa-map-marker-alt mr-1 text-purple-400"></i>
-                            {order.location}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="text-xs text-[#5d6788] flex flex-wrap items-center gap-4">
-                        <span><i className="fas fa-building mr-1 text-[10px]"></i>Company: {order.category}</span>
-                        <span><i className="far fa-clock mr-1 text-[10px]"></i>Updated: {order.time}</span>
-                        {order.clientName && order.clientName !== order.category && (
-                          <span className="text-[#9aa2bf]"><i className="fas fa-user-check mr-1 text-[10px] text-[#2ecc71]"></i>Client: {order.clientName}</span>
-                        )}
-                        {order.url && order.url !== '#' && (
-                          <a
-                            href={order.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-purple-400 hover:underline inline-flex items-center gap-1 font-medium"
-                          >
-                            <span>View Original Listing</span>
-                            <i className="fas fa-external-link-alt text-[10px]"></i>
-                          </a>
-                        )}
-                        <span><i className="fas fa-shield-alt mr-1 text-[10px] text-[#4f7cff]"></i>Escrow Ready</span>
-                      </div>
-
-                      {order.tags && order.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {order.tags.slice(0, 5).map((t, idx) => (
-                            <span key={idx} className="text-[10px] font-mono text-[#9aa2bf] bg-[#161b2b] px-2 py-0.5 rounded border border-[#20273a]">
-                              #{t}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-3">
-                      {editingOrderId === order.id ? (
-                        <div className="flex items-center gap-1.5 bg-[#0b0d15] p-1.5 rounded-lg border border-[#4f7cff]">
-                          <input
-                            type="number"
-                            autoFocus
-                            value={editingAmountValue}
-                            onChange={(e) => setEditingAmountValue(e.target.value)}
-                            placeholder="USDT"
-                            className="w-20 bg-transparent text-xs font-mono text-white px-2 py-0.5 focus:outline-none"
-                          />
-                          <button
-                            onClick={() => saveCustomAmount(order.id)}
-                            className="text-[#2ecc71] hover:text-emerald-300 p-1 text-xs"
-                            title="Save Amount"
-                          >
-                            <i className="fas fa-check"></i>
-                          </button>
-                          <button
-                            onClick={() => setEditingOrderId(null)}
-                            className="text-slate-400 hover:text-white p-1 text-xs"
-                            title="Cancel"
-                          >
-                            <i className="fas fa-times"></i>
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="flex items-center gap-2">
-                          <span className={`font-mono font-bold text-base ${order.amount === 0 ? 'text-[#f39c12]' : 'text-[#2ecc71]'}`}>
-                            {order.amount === 0 ? 'Quote / Rate Pending' : `${fmt(order.amount)} USDT`}
-                          </span>
-                          <button
-                            onClick={() => {
-                              setEditingOrderId(order.id);
-                              setEditingAmountValue(order.amount ? String(order.amount) : '350');
-                            }}
-                            className="text-xs text-[#5d6788] hover:text-[#4f7cff] p-1"
-                            title="Set / Edit Contract Quote"
-                          >
-                            <i className="fas fa-edit"></i>
-                          </button>
-                        </div>
-                      )}
-                      
-                      {/* Interactive AI Tools */}
-                      <button
-                        onClick={() => {
-                          const freelanceJob = toFreelanceJob(order);
-                          setSelectedProposalJob(freelanceJob);
-                          setIsProposalStudioOpen(true);
-                        }}
-                        className="bg-purple-500/15 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1 shadow-sm"
-                        title="Generate client proposal with Gemini 3.7 Flash"
-                      >
-                        <i className="fas fa-magic text-[10px]"></i>
-                        <span className="hidden sm:inline">AI Pitch</span>
-                      </button>
-
-                      <button
-                        onClick={() => {
-                          const freelanceJob = toFreelanceJob(order);
-                          setSelectedAnalysisJob(freelanceJob);
-                          setIsAnalysisModalOpen(true);
-                        }}
-                        className="bg-cyan-500/15 hover:bg-cyan-500/30 text-cyan-300 border border-cyan-500/30 px-2.5 py-1.5 rounded-full text-xs font-semibold transition-all flex items-center gap-1"
-                        title="Audit client risk and profit margin"
-                      >
-                        <i className="fas fa-shield-alt text-[10px]"></i>
-                        <span className="hidden sm:inline">Audit</span>
-                      </button>
-
-                      {order.status === 'pending' && (
-                        <button
-                          onClick={() => acceptOrder(order.id)}
-                          className="bg-blue-600/20 hover:bg-blue-600 text-blue-400 hover:text-white px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 border border-blue-500/30"
-                        >
-                          <i className="fas fa-play text-[10px]"></i> Accept Contract
-                        </button>
-                      )}
-
-                      {order.status === 'in-progress' && (
-                        <button
-                          onClick={() => completeOrder(order.id)}
-                          className="bg-[#2ecc71]/20 hover:bg-[#2ecc71] text-[#2ecc71] hover:text-slate-950 px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 border border-[#2ecc71]/30"
-                        >
-                          <i className="fas fa-check text-[10px]"></i> Complete &amp; Release
-                        </button>
-                      )}
-
-                      {order.status === 'urgent' && (
-                        <button
-                          onClick={() => completeOrder(order.id)}
-                          className="bg-[#e74c3c]/20 hover:bg-[#e74c3c] text-[#e74c3c] hover:text-white px-3.5 py-1.5 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 border border-[#e74c3c]/30"
-                        >
-                          <i className="fas fa-bolt text-[10px]"></i> Expedite &amp; Release
-                        </button>
-                      )}
-
-                      {order.status === 'completed' && (
-                        <span className="text-xs text-[#5d6788] font-medium flex items-center gap-1">
-                          <i className="fas fa-check-circle text-[#2ecc71]"></i> Paid &amp; Invoiced
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <Suspense fallback={<LazyFallback label="Loading Work Orders & Pipeline..." />}>
+            <WorkOrdersView
+              workOrders={workOrders}
+              isSyncingRemoteOK={isSyncingRemoteOK}
+              onSyncRemoteOK={syncRemoteOKJobs}
+              onExploreRemoteOK={() => setActiveTab('remoteok')}
+              onNewCustomOrder={() => {
+                setActiveTab('dashboard');
+                setTimeout(() => {
+                  document.getElementById('manualTitleInput')?.focus();
+                }, 100);
+              }}
+              onOpenSettings={() => setIsCredentialsModalOpen(true)}
+              onAcceptOrder={acceptOrder}
+              onCompleteOrder={completeOrder}
+              onSaveCustomAmount={saveCustomAmount}
+              onOpenProposalStudio={(job) => {
+                setSelectedProposalJob(job);
+                setIsProposalStudioOpen(true);
+              }}
+              onOpenAnalysisModal={(job) => {
+                setSelectedAnalysisJob(job);
+                setIsAnalysisModalOpen(true);
+              }}
+              toFreelanceJob={toFreelanceJob}
+              fmt={fmt}
+            />
+          </Suspense>
         )}
 
         {/* ===== TAB 3: INVOICING ===== */}
         {activeTab === 'invoicing' && (
           <div className="space-y-4">
-            <div className="bg-[#161b2b] rounded-2xl border border-[#2a3147] p-6 shadow-lg">
-              <div className="flex items-center justify-between pb-4 border-b border-[#2a3147] mb-5">
-                <div>
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <i className="fas fa-file-invoice-dollar text-[#4f7cff]"></i>
-                    Automated Invoices &amp; Receipts
-                  </h3>
-                  <p className="text-xs text-[#9aa2bf] mt-0.5">Invoices are automatically generated upon milestone completion</p>
-                </div>
-
-                <button
-                  onClick={() => {
-                    const amount = randomFloat(25, 95);
-                    const invId = `INV-${new Date().toISOString().slice(0, 10)}-${random(100, 999)}`;
-                    const newInv: Invoice = {
-                      id: invId,
-                      orderTitle: 'Custom Full-Stack Prototype Milestone',
-                      amount: amount,
-                      date: new Date().toLocaleString(),
-                      status: 'Paid',
-                      client: 'Enterprise Client Inc'
-                    };
-                    setInvoices(prev => [newInv, ...prev]);
-                    showToast(`📄 Invoice #${invId} generated for ${fmt(amount)} USDT`, 'info');
-                  }}
-                  className="bg-[#4f7cff] hover:bg-[#3d6bf0] text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 transition-all"
-                >
-                  <i className="fas fa-plus"></i>
-                  <span>Generate Invoice</span>
-                </button>
-              </div>
-
-              <div className="space-y-3">
-                {invoices.map((inv, idx) => (
-                  <div
-                    key={`inv-${inv.id || idx}-${idx}`}
-                    className="flex flex-wrap items-center justify-between p-4 bg-[#11141f] rounded-xl border border-[#2a3147] text-xs hover:border-[#4f7cff] transition-all gap-3"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-[#4f7cff]/15 text-[#4f7cff] flex items-center justify-center">
-                        <i className="fas fa-file-invoice"></i>
-                      </div>
-                      <div>
-                        <div className="font-bold text-white text-sm">{inv.id}</div>
-                        <div className="text-[#9aa2bf]">{inv.orderTitle} • Client: {inv.client}</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <span className="font-mono text-sm font-bold text-white">{fmt(inv.amount)} USD</span>
-                      <span className={`px-2.5 py-1 rounded-full font-bold text-[10px] ${
-                        inv.status === 'Paid' ? 'bg-[#2ecc71]/20 text-[#2ecc71]' : 'bg-[#f39c12]/20 text-[#f39c12]'
-                      }`}>
-                        {inv.status}
-                      </span>
-                      
-                      {/* PayPal Receive / Pay Action */}
-                      <button
-                        onClick={() => {
-                          setSelectedPayPalInvoice(inv);
-                          setIsPayPalModalOpen(true);
-                        }}
-                        className="bg-gradient-to-r from-[#003087] to-[#0070ba] hover:opacity-90 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                        title="Collect or Pay this invoice via PayPal (USD)"
-                      >
-                        <i className="fab fa-paypal text-[#00cfe8]"></i>
-                        <span>PayPal ($)</span>
-                      </button>
-
-                      {/* GST / Razorpay Invoice Pay Action */}
-                      <button
-                        onClick={() => {
-                          setSelectedGSTInvoice(inv);
-                          setIsGSTInvoiceOpen(true);
-                        }}
-                        className="bg-gradient-to-r from-amber-600 to-amber-700 hover:opacity-90 text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm"
-                        title="View GST compliant Tax Invoice (₹ INR)"
-                      >
-                        <i className="fas fa-file-invoice text-amber-300"></i>
-                        <span>GST Invoice (₹)</span>
-                      </button>
-
-                      <button
-                        onClick={() => showToast(`📥 Downloading ${inv.id}.pdf...`, 'success')}
-                        className="p-2 text-[#9aa2bf] hover:text-white bg-[#161b2b] hover:bg-[#1e2438] rounded-lg transition-all"
-                        title="Download PDF"
-                      >
-                        <i className="fas fa-download"></i>
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-6 pt-4 border-t border-[#2a3147] flex justify-between items-center flex-wrap gap-3">
-                <div className="flex items-center gap-4 text-xs text-[#9aa2bf] flex-wrap">
-                  <span className="flex items-center gap-1.5">
-                    <i className="fab fa-paypal text-[#00cfe8]"></i>
-                    Live PayPal REST &amp; PayPal.Me (USD, EUR, GBP)
-                  </span>
-                  <span className="text-slate-600">•</span>
-                  <span className="flex items-center gap-1.5 text-emerald-400">
-                    <i className="fas fa-database text-emerald-400"></i>
-                    PostgreSQL Direct Work Order Initialization
-                  </span>
-                </div>
-                <button
-                  onClick={() => showToast('📥 Exporting all invoices as ZIP/CSV archive...', 'success')}
-                  className="bg-[#11141f] hover:bg-[#1e2438] border border-[#2a3147] text-white px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2"
-                >
-                  <i className="fas fa-download"></i>
-                  <span>Download All Invoices</span>
-                </button>
-              </div>
-            </div>
+            <Suspense fallback={<LazyFallback label="Loading Invoicing Hub..." />}>
+              <InvoicesView
+                invoices={invoices}
+                onGenerateInvoice={() => {
+                  const amount = randomFloat(25, 95);
+                  const invId = `INV-${new Date().toISOString().slice(0, 10)}-${random(100, 999)}`;
+                  const newInv: Invoice = {
+                    id: invId,
+                    orderTitle: 'Custom Full-Stack Prototype Milestone',
+                    amount: amount,
+                    date: new Date().toLocaleString(),
+                    status: 'Paid',
+                    client: 'Enterprise Client Inc'
+                  };
+                  setInvoices(prev => [newInv, ...prev]);
+                  showToast(`📄 Invoice #${invId} generated for ${fmt(amount)} USDT`, 'info');
+                }}
+                onOpenPayPalInvoice={(inv) => {
+                  setSelectedPayPalInvoice(inv);
+                  setIsPayPalModalOpen(true);
+                }}
+                onOpenGSTInvoice={(inv) => {
+                  setSelectedGSTInvoice(inv);
+                  setIsGSTInvoiceOpen(true);
+                }}
+                onDownloadPDF={(invId) => showToast(`📥 Downloading ${invId}.pdf...`, 'success')}
+                onDownloadAllInvoices={() => showToast('📥 Exporting all invoices as ZIP/CSV archive...', 'success')}
+                fmt={fmt}
+              />
+            </Suspense>
 
             {/* Active Contracts, Milestone Deliverables & Official Printable Invoices */}
             <div className="pt-2">
-              <ContractsAndInvoices
-                contracts={activeContractsList}
-                onCompleteMilestone={(contractId, milestoneId) => {
-                  setActiveContractsList(prev => prev.map(c => {
-                    if (c.id === contractId) {
-                      const updatedMilestones = c.milestones.map(m => {
-                        if (m.id === milestoneId && !m.completed) {
-                          const amt = m.amount;
-                          setWalletBalance(curr => curr + amt);
-                          setTodayEarnings(curr => curr + amt);
-                          const newTx: Transaction = {
-                            id: makeUniqueId('tx_milestone'),
-                            name: `🎯 Milestone Payout: "${m.title}" (${c.jobTitle})`,
-                            date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' Today',
-                            amount: amt,
-                            type: 'credit',
-                            method: 'Escrow',
-                            referenceId: `MS-${Date.now().toString().slice(-6)}`
-                          };
-                          setTransactions(t => [newTx, ...t]);
-                          showToast(`✅ Milestone "${m.title}" completed! (+$${fmt(amt)} USD)`, 'success');
-                          confetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
-                          return { ...m, completed: true };
-                        }
-                        return m;
-                      });
-                      const newPaid = updatedMilestones.filter(m => m.completed).reduce((acc, m) => acc + m.amount, 0);
-                      return { ...c, milestones: updatedMilestones, amountPaid: newPaid };
-                    }
-                    return c;
-                  }));
-                }}
-              />
+              <Suspense fallback={<LazyFallback label="Loading Invoices & Contracts..." />}>
+                <ContractsAndInvoices
+                  contracts={activeContractsList}
+                  onCompleteMilestone={(contractId, milestoneId) => {
+                    setActiveContractsList(prev => prev.map(c => {
+                      if (c.id === contractId) {
+                        const updatedMilestones = c.milestones.map(m => {
+                          if (m.id === milestoneId && !m.completed) {
+                            const amt = m.amount;
+                            setWalletBalance(curr => curr + amt);
+                            setTodayEarnings(curr => curr + amt);
+                            const newTx: Transaction = {
+                              id: makeUniqueId('tx_milestone'),
+                              name: `🎯 Milestone Payout: "${m.title}" (${c.jobTitle})`,
+                              date: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' Today',
+                              amount: amt,
+                              type: 'credit',
+                              method: 'Escrow',
+                              referenceId: `MS-${Date.now().toString().slice(-6)}`
+                            };
+                            setTransactions(t => [newTx, ...t]);
+                            showToast(`✅ Milestone "${m.title}" completed! (+$${fmt(amt)} USD)`, 'success');
+                            triggerConfetti({ particleCount: 60, spread: 60, origin: { y: 0.6 } });
+                            return { ...m, completed: true };
+                          }
+                          return m;
+                        });
+                        const newPaid = updatedMilestones.filter(m => m.completed).reduce((acc, m) => acc + m.amount, 0);
+                        return { ...c, milestones: updatedMilestones, amountPaid: newPaid };
+                      }
+                      return c;
+                    }));
+                  }}
+                />
+              </Suspense>
             </div>
           </div>
         )}
@@ -2846,135 +2414,101 @@ export default function App() {
         {/* ===== TAB: REAL INCOME HUB & CLIENT CHECKOUT ===== */}
         {activeTab === 'income' && (
           <div className="space-y-5">
-            <RealIncomeHub
-              onPaymentReceived={handlePayPalPaymentReceived}
-              onNavigateToTab={(t) => setActiveTab(t as any)}
-              showToast={showToast}
-            />
+            <Suspense fallback={<LazyFallback label="Loading Real Income Hub..." />}>
+              <RealIncomeHub
+                onPaymentReceived={handlePayPalPaymentReceived}
+                onNavigateToTab={(t) => setActiveTab(t as any)}
+                showToast={showToast}
+              />
+            </Suspense>
           </div>
         )}
 
         {/* ===== TAB 4: REAL INCOME & PAYMENT RECEIVING HUB ===== */}
         {activeTab === 'paypal' && (
           <div className="space-y-5">
-            <RealIncomeHub
-              onPaymentReceived={handlePayPalPaymentReceived}
-              onNavigateToTab={(t) => setActiveTab(t as any)}
-              showToast={showToast}
-            />
+            <Suspense fallback={<LazyFallback label="Loading PayPal Gateway..." />}>
+              <RealIncomeHub
+                onPaymentReceived={handlePayPalPaymentReceived}
+                onNavigateToTab={(t) => setActiveTab(t as any)}
+                showToast={showToast}
+              />
+            </Suspense>
           </div>
         )}
 
         {/* ===== TAB 6: ANALYTICS ===== */}
         {activeTab === 'analytics' && (
           <div className="space-y-5">
-            <div className="bg-[#161b2b] rounded-2xl border border-[#2a3147] p-6 shadow-lg">
-              <div className="flex items-center justify-between pb-4 border-b border-[#2a3147] mb-5">
-                <h3 className="text-base font-bold text-white flex items-center gap-2">
-                  <i className="fas fa-chart-line text-[#4f7cff]"></i>
-                  Performance &amp; Category Analytics
-                </h3>
-                <button
-                  onClick={() => showToast('📊 Performance report exported to CSV', 'success')}
-                  className="text-xs text-[#4f7cff] hover:underline font-medium"
-                >
-                  Export Data →
-                </button>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="bg-[#11141f] rounded-xl p-4 border border-[#2a3147] h-[220px] flex flex-col justify-between">
-                  <span className="text-xs font-semibold text-[#9aa2bf]">Earnings Distribution by Category</span>
-                  <div className="h-[170px] relative">
-                    <canvas ref={analyticsDoughnutCanvasRef}></canvas>
-                  </div>
-                </div>
-
-                <div className="bg-[#11141f] rounded-xl p-4 border border-[#2a3147] h-[220px] flex flex-col justify-between">
-                  <span className="text-xs font-semibold text-[#9aa2bf]">Monthly Revenue Trajectory ($ USD)</span>
-                  <div className="h-[170px] relative">
-                    <canvas ref={analyticsBarCanvasRef}></canvas>
-                  </div>
-                </div>
-              </div>
-
-              <div className="mt-5 p-4 bg-[#11141f] rounded-xl border border-[#2a3147]">
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs">
-                  <div>
-                    <span className="text-[#5d6788] block">Avg. Order Value</span>
-                    <strong className="text-white font-mono text-sm mt-0.5 block">$24.80 USD</strong>
-                  </div>
-                  <div>
-                    <span className="text-[#5d6788] block">Fastest Turnaround</span>
-                    <strong className="text-[#2ecc71] font-mono text-sm mt-0.5 block">12 min</strong>
-                  </div>
-                  <div>
-                    <span className="text-[#5d6788] block">Top Category</span>
-                    <strong className="text-[#4f7cff] font-mono text-sm mt-0.5 block">Web Development</strong>
-                  </div>
-                  <div>
-                    <span className="text-[#5d6788] block">Net Profit Margin</span>
-                    <strong className="text-[#2ecc71] font-mono text-sm mt-0.5 block">96.8%</strong>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <Suspense fallback={<LazyFallback label="Loading Analytics..." />}>
+              <AnalyticsView
+                onExportData={() => showToast('📊 Performance report exported to CSV', 'success')}
+              />
+            </Suspense>
           </div>
         )}
 
         {/* ===== TAB: LEAD NOTIFICATIONS & SPEED RADAR ===== */}
         {activeTab === 'notifications' && (
-          <LeadNotificationsHub
-            onOpenProposalStudio={(job) => {
-              setSelectedProposalJob(job);
-              setIsProposalStudioOpen(true);
-            }}
-            showToast={showToast}
-          />
+          <Suspense fallback={<LazyFallback label="Loading Notifications Radar..." />}>
+            <LeadNotificationsHub
+              onOpenProposalStudio={(job) => {
+                setSelectedProposalJob(job);
+                setIsProposalStudioOpen(true);
+              }}
+              showToast={showToast}
+            />
+          </Suspense>
         )}
 
         {/* ===== TAB: REAL LEAD SCORING & TIER PAYWALLS ===== */}
         {activeTab === 'leads' && (
-          <PremiumLeadsRadar
-            profile={userProfile}
-            onOpenProposalStudio={(job) => {
-              setSelectedProposalJob(job);
-              setIsProposalStudioOpen(true);
-            }}
-            onAnalyzeJob={(job) => {
-              setSelectedAnalysisJob(job);
-              setIsAnalysisModalOpen(true);
-            }}
-            showToast={showToast}
-          />
+          <Suspense fallback={<LazyFallback label="Loading AI Leads Radar..." />}>
+            <PremiumLeadsRadar
+              profile={userProfile}
+              onOpenProposalStudio={(job) => {
+                setSelectedProposalJob(job);
+                setIsProposalStudioOpen(true);
+              }}
+              onAnalyzeJob={(job) => {
+                setSelectedAnalysisJob(job);
+                setIsAnalysisModalOpen(true);
+              }}
+              showToast={showToast}
+            />
+          </Suspense>
         )}
 
         {/* ===== TAB 8: ACTIVITY LOGS & WEBHOOK DEBUGGER ===== */}
         {activeTab === 'logs' && (
-          <ActivityLogsView onNavigateToTab={(t) => setActiveTab(t as any)} />
+          <Suspense fallback={<LazyFallback label="Loading Activity Logs..." />}>
+            <ActivityLogsView onNavigateToTab={(t) => setActiveTab(t as any)} />
+          </Suspense>
         )}
 
       </main>
 
       {/* ===== PLATFORM CREDENTIALS, WEBHOOKS & DATA RECOVERY MODAL ===== */}
-      <PlatformCredentialsModal
-        isOpen={isCredentialsModalOpen}
-        onClose={() => setIsCredentialsModalOpen(false)}
-        onOrderAdded={(newOrder) => {
-          setWorkOrders(prev => [newOrder, ...prev]);
-        }}
-        workOrders={workOrders}
-        transactions={transactions}
-        invoices={invoices}
-        contracts={activeContractsList}
-        profile={userProfile}
-        stats={{
-          walletBalance,
-          todayEarnings,
-          completedOrders
-        }}
-        showToast={showToast}
-      />
+      <Suspense fallback={null}>
+        <PlatformCredentialsModal
+          isOpen={isCredentialsModalOpen}
+          onClose={() => setIsCredentialsModalOpen(false)}
+          onOrderAdded={(newOrder) => {
+            setWorkOrders(prev => [newOrder, ...prev]);
+          }}
+          workOrders={workOrders}
+          transactions={transactions}
+          invoices={invoices}
+          contracts={activeContractsList}
+          profile={userProfile}
+          stats={{
+            walletBalance,
+            todayEarnings,
+            completedOrders
+          }}
+          showToast={showToast}
+        />
+      </Suspense>
 
       {/* ===== REAL INCOME PAYMENT & CHECKOUT MODAL ===== */}
       {isPayPalModalOpen && (
@@ -2991,158 +2525,174 @@ export default function App() {
               <i className="fas fa-times"></i>
             </button>
 
-            <RealIncomeHub
-              onPaymentReceived={(amount, client, desc) => {
-                handlePayPalPaymentReceived(amount, client, desc);
-                setIsPayPalModalOpen(false);
-              }}
-              onNavigateToTab={(t) => {
-                setIsPayPalModalOpen(false);
-                setActiveTab(t as any);
-              }}
-              showToast={showToast}
-            />
+            <Suspense fallback={<LazyFallback label="Loading Payment Terminal..." />}>
+              <RealIncomeHub
+                onPaymentReceived={(amount, client, desc) => {
+                  handlePayPalPaymentReceived(amount, client, desc);
+                  setIsPayPalModalOpen(false);
+                }}
+                onNavigateToTab={(t) => {
+                  setIsPayPalModalOpen(false);
+                  setActiveTab(t as any);
+                }}
+                showToast={showToast}
+              />
+            </Suspense>
           </div>
         </div>
       )}
 
       {/* ===== AI PROPOSAL STUDIO MODAL (GEMINI 3.7 FLASH) ===== */}
-      <ProposalStudioModal
-        isOpen={isProposalStudioOpen}
-        onClose={() => {
-          setIsProposalStudioOpen(false);
-          setSelectedProposalJob(null);
-        }}
-        job={selectedProposalJob}
-        profile={userProfile}
-        onSubmitBid={async (job, proposal) => {
-          const jobId = job.id;
-          try {
-            showToast(`🚀 Submitting pitch for "${job?.title || 'Contract'}"...`, 'info');
-            
-            await submitLivePlatformBid(jobId, {
-              coverLetter: proposal.coverLetter,
-              bidAmount: proposal.bidAmount,
-              deliveryDays: proposal.estimatedDays
-            });
-
-            // Update Work Order to in-progress
-            setWorkOrders(prev => {
-              const existing = prev.find(o => String(o.id) === String(jobId));
-              if (existing) {
-                return prev.map(o => String(o.id) === String(jobId) ? { ...o, status: 'in-progress', amount: proposal.bidAmount } : o);
-              } else if (job) {
-                const newOrder: WorkOrder = {
-                  id: job.id,
-                  externalId: job.id,
-                  title: job.title,
-                  platform: job.platform,
-                  status: 'in-progress',
-                  amount: proposal.bidAmount,
-                  category: job.skills[0] || 'Software Dev',
-                  time: 'Just now',
-                  clientName: job.client.name,
-                  description: job.description,
-                  url: job.platformUrl
-                };
-                return [newOrder, ...prev];
-              }
-              return prev;
-            });
-
-            // Stage contract in Contracts & Invoices
-            const newContract: ActiveContract = {
-              id: `CON-${Date.now().toString().slice(-4)}`,
-              jobTitle: job?.title || 'Custom Engineering Scope',
-              platform: (job?.platform as any) || 'RemoteOK',
-              clientName: job?.client.name || 'Direct Enterprise Client',
-              totalValue: proposal.bidAmount,
-              amountPaid: 0,
-              status: 'in_progress',
-              milestones: proposal.proposedMilestones && proposal.proposedMilestones.length > 0 ? proposal.proposedMilestones.map((m, idx) => ({
-                id: `M${idx + 1}`,
-                title: m.name,
-                amount: m.amount,
-                completed: false,
-                dueDate: `Day ${m.durationDays}`
-              })) : [
-                { id: 'M1', title: 'Initial Prototype & Architecture Setup', amount: Math.round(proposal.bidAmount * 0.5), completed: false, dueDate: '3 Days' },
-                { id: 'M2', title: 'Full Implementation & Test Suite Delivery', amount: Math.round(proposal.bidAmount * 0.5), completed: false, dueDate: `${proposal.estimatedDays} Days` }
-              ],
-              startedDate: 'Today'
-            };
-            setActiveContractsList(prev => [newContract, ...prev]);
-
-            showToast(`🎉 Pitch dispatched! Track progress in Work Orders & Invoicing.`, 'success');
-            confetti({ particleCount: 75, spread: 65, origin: { y: 0.6 } });
+      <Suspense fallback={null}>
+        <ProposalStudioModal
+          isOpen={isProposalStudioOpen}
+          onClose={() => {
             setIsProposalStudioOpen(false);
-          } catch (err: any) {
-            showToast(`Error submitting pitch: ${err?.message || 'Check network'}`, 'warning');
-          }
-        }}
-        onOpenPayPal={() => setIsPayPalConnectOpen(true)}
-        onOpenLegal={() => {
-          setLegalTab('terms');
-          setIsLegalModalOpen(true);
-        }}
-      />
+            setSelectedProposalJob(null);
+          }}
+          job={selectedProposalJob}
+          profile={userProfile}
+          onSubmitBid={async (job, proposal) => {
+            const jobId = job.id;
+            try {
+              showToast(`🚀 Submitting pitch for "${job?.title || 'Contract'}"...`, 'info');
+              
+              await submitLivePlatformBid(jobId, {
+                coverLetter: proposal.coverLetter,
+                bidAmount: proposal.bidAmount,
+                deliveryDays: proposal.estimatedDays
+              });
+
+              // Update Work Order to in-progress
+              setWorkOrders(prev => {
+                const existing = prev.find(o => String(o.id) === String(jobId));
+                if (existing) {
+                  return prev.map(o => String(o.id) === String(jobId) ? { ...o, status: 'in-progress', amount: proposal.bidAmount } : o);
+                } else if (job) {
+                  const newOrder: WorkOrder = {
+                    id: job.id,
+                    externalId: job.id,
+                    title: job.title,
+                    platform: job.platform,
+                    status: 'in-progress',
+                    amount: proposal.bidAmount,
+                    category: job.skills[0] || 'Software Dev',
+                    time: 'Just now',
+                    clientName: job.client.name,
+                    description: job.description,
+                    url: job.platformUrl
+                  };
+                  return [newOrder, ...prev];
+                }
+                return prev;
+              });
+
+              // Stage contract in Contracts & Invoices
+              const newContract: ActiveContract = {
+                id: `CON-${Date.now().toString().slice(-4)}`,
+                jobTitle: job?.title || 'Custom Engineering Scope',
+                platform: (job?.platform as any) || 'RemoteOK',
+                clientName: job?.client.name || 'Direct Enterprise Client',
+                totalValue: proposal.bidAmount,
+                amountPaid: 0,
+                status: 'in_progress',
+                milestones: proposal.proposedMilestones && proposal.proposedMilestones.length > 0 ? proposal.proposedMilestones.map((m, idx) => ({
+                  id: `M${idx + 1}`,
+                  title: m.name,
+                  amount: m.amount,
+                  completed: false,
+                  dueDate: `Day ${m.durationDays}`
+                })) : [
+                  { id: 'M1', title: 'Initial Prototype & Architecture Setup', amount: Math.round(proposal.bidAmount * 0.5), completed: false, dueDate: '3 Days' },
+                  { id: 'M2', title: 'Full Implementation & Test Suite Delivery', amount: Math.round(proposal.bidAmount * 0.5), completed: false, dueDate: `${proposal.estimatedDays} Days` }
+                ],
+                startedDate: 'Today'
+              };
+              setActiveContractsList(prev => [newContract, ...prev]);
+
+              showToast(`🎉 Pitch dispatched! Track progress in Work Orders & Invoicing.`, 'success');
+              triggerConfetti({ particleCount: 75, spread: 65, origin: { y: 0.6 } });
+              setIsProposalStudioOpen(false);
+            } catch (err: any) {
+              showToast(`Error submitting pitch: ${err?.message || 'Check network'}`, 'warning');
+            }
+          }}
+          onOpenPayPal={() => setIsPayPalConnectOpen(true)}
+          onOpenLegal={() => {
+            setLegalTab('terms');
+            setIsLegalModalOpen(true);
+          }}
+        />
+      </Suspense>
 
       {/* ===== AI DEAL & RISK ANALYSIS MODAL ===== */}
-      <JobAnalysisModal
-        isOpen={isAnalysisModalOpen}
-        onClose={() => {
-          setIsAnalysisModalOpen(false);
-          setSelectedAnalysisJob(null);
-        }}
-        job={selectedAnalysisJob}
-        profile={userProfile}
-        onProceedToPitch={(job) => {
-          setIsAnalysisModalOpen(false);
-          setSelectedProposalJob(job);
-          setIsProposalStudioOpen(true);
-        }}
-      />
+      <Suspense fallback={null}>
+        <JobAnalysisModal
+          isOpen={isAnalysisModalOpen}
+          onClose={() => {
+            setIsAnalysisModalOpen(false);
+            setSelectedAnalysisJob(null);
+          }}
+          job={selectedAnalysisJob}
+          profile={userProfile}
+          onProceedToPitch={(job) => {
+            setIsAnalysisModalOpen(false);
+            setSelectedProposalJob(job);
+            setIsProposalStudioOpen(true);
+          }}
+        />
+      </Suspense>
 
       {/* ===== PRODUCTION COMPLIANCE & LEGAL MODAL (ToS, Privacy, GST, Refunds) ===== */}
-      <LegalComplianceModal
-        isOpen={isLegalModalOpen}
-        initialTab={legalTab}
-        onClose={() => setIsLegalModalOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <LegalComplianceModal
+          isOpen={isLegalModalOpen}
+          initialTab={legalTab}
+          onClose={() => setIsLegalModalOpen(false)}
+        />
+      </Suspense>
 
       {/* ===== OFFICIAL GST TAX INVOICE MODAL (SAC 998315) ===== */}
-      <GSTInvoiceModal
-        isOpen={isGSTInvoiceOpen}
-        invoice={selectedGSTInvoice}
-        onClose={() => setIsGSTInvoiceOpen(false)}
-      />
+      <Suspense fallback={null}>
+        <GSTInvoiceModal
+          isOpen={isGSTInvoiceOpen}
+          invoice={selectedGSTInvoice}
+          onClose={() => setIsGSTInvoiceOpen(false)}
+        />
+      </Suspense>
 
       {/* ===== PAYPAL & DIRECT BANK SETTLEMENT MODAL ===== */}
-      <PayPalConnectModal
-        isOpen={isPayPalConnectOpen}
-        onClose={() => setIsPayPalConnectOpen(false)}
-        showToast={showToast}
-      />
+      <Suspense fallback={null}>
+        <PayPalConnectModal
+          isOpen={isPayPalConnectOpen}
+          onClose={() => setIsPayPalConnectOpen(false)}
+          showToast={showToast}
+        />
+      </Suspense>
 
       {/* ===== PASSWORD RESET & SECURITY MODAL ===== */}
-      <PasswordResetModal
-        isOpen={isPasswordResetOpen}
-        onClose={() => setIsPasswordResetOpen(false)}
-        initialEmail={userEmail}
-        onSuccess={(msg) => showToast(msg, 'success')}
-      />
+      <Suspense fallback={null}>
+        <PasswordResetModal
+          isOpen={isPasswordResetOpen}
+          onClose={() => setIsPasswordResetOpen(false)}
+          initialEmail={userEmail}
+          onSuccess={(msg) => showToast(msg, 'success')}
+        />
+      </Suspense>
 
       {/* ===== EMAIL VERIFICATION MODAL ===== */}
-      <EmailVerificationModal
-        isOpen={isEmailVerificationOpen}
-        onClose={() => setIsEmailVerificationOpen(false)}
-        email={userEmail}
-        isVerified={isEmailVerified}
-        onVerificationSuccess={() => {
-          setIsEmailVerified(true);
-          showToast('✅ Email verified successfully! All platform limits unlocked.', 'success');
-        }}
-      />
+      <Suspense fallback={null}>
+        <EmailVerificationModal
+          isOpen={isEmailVerificationOpen}
+          onClose={() => setIsEmailVerificationOpen(false)}
+          email={userEmail}
+          isVerified={isEmailVerified}
+          onVerificationSuccess={() => {
+            setIsEmailVerified(true);
+            showToast('✅ Email verified successfully! All platform limits unlocked.', 'success');
+          }}
+        />
+      </Suspense>
 
       {/* ===== FLOATING TOAST NOTIFICATION ===== */}
       <div

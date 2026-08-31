@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import fs from "fs";
 import cron from "node-cron";
+import rateLimit from "express-rate-limit";
 import { createServer as createViteServer } from "vite";
 import remoteokRoutes from "./routes/remoteok.js";
 import paypalRoutes from "./routes/paypal.js";
@@ -16,6 +17,7 @@ import { checkCredits } from "./server/checkCredits.js";
 import { authMiddleware } from "./server/authMiddleware.js";
 import { prisma, checkDatabaseConnection, syncLiveJobsToPostgres } from "./server/db.js";
 import { getGeminiAI } from "./server/gemini.js";
+import { clearBidsCache } from "./server/redisCache.js";
 import {
   getPlatformStatus,
   fetchLivePlatformJobs,
@@ -27,11 +29,58 @@ import {
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
+// Performance Middleware: track response latency and inject X-Response-Time header
+app.use((req, res, next) => {
+  const startHr = process.hrtime.bigint();
+
+  const originalWriteHead = res.writeHead;
+  res.writeHead = function (statusCode: any, ...args: any[]) {
+    const endHr = process.hrtime.bigint();
+    const durationMs = Number(endHr - startHr) / 1_000_000;
+    res.setHeader("X-Response-Time", `${durationMs.toFixed(2)}ms`);
+    return (originalWriteHead as any).call(this, statusCode, ...args);
+  };
+
+  res.on("finish", () => {
+    const endHr = process.hrtime.bigint();
+    const durationMs = Number(endHr - startHr) / 1_000_000;
+    if (durationMs > 500 && req.path.startsWith("/api")) {
+      console.warn(`⚠️ [SLOW_REQUEST] ${req.method} ${req.originalUrl || req.path} took ${durationMs.toFixed(1)}ms (Status: ${res.statusCode})`);
+    }
+  });
+
+  next();
+});
+
+// Rate Limiters for critical endpoints
+const withdrawRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 25,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: "Too many withdrawal requests from this IP. Please try again in 15 minutes.",
+  },
+});
+
+const aiProposalRateLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 40,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: "AI proposal generation rate limit reached. Please wait a moment before generating more proposals.",
+  },
+});
+
 // CORS & Preflight middleware
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
   res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, paypal-transmission-sig, x-webhook-signature, x-paypal-webhook-id");
+  res.header("Access-Control-Expose-Headers", "X-Response-Time");
   if (req.method === "OPTIONS") {
     return res.sendStatus(200);
   }
@@ -47,6 +96,75 @@ app.use(
 );
 
 // -------------------- API ROUTES --------------------
+
+// AI Proposal Generator Route (Gemini 3.7 Flash)
+app.post("/api/ai/generate-proposal", aiProposalRateLimiter, async (req, res) => {
+  try {
+    const { jobTitle, jobDescription, clientName, budget, skills, platform } = req.body;
+
+    if (!jobTitle && !jobDescription) {
+      return res.status(400).json({
+        success: false,
+        error: "Either jobTitle or jobDescription must be provided."
+      });
+    }
+
+    const ai = getGeminiAI();
+    let proposalText = "";
+
+    if (ai) {
+      const prompt = `You are a world-class senior freelance full-stack engineer and AI specialist.
+
+Write a tailored, high-converting freelance job proposal based on the following details:
+Job Title: ${jobTitle || "Freelance Engineering Project"}
+Client Name: ${clientName || "Hiring Manager"}
+Budget/Package: $${budget || 499}
+Skills Required: ${Array.isArray(skills) ? skills.join(", ") : skills || "React, TypeScript, Node.js, API Integration"}
+Platform: ${platform || "Freelancer.com / Remote OK"}
+Job Description:
+"""
+${jobDescription || jobTitle}
+"""
+
+FORMATTING GUIDELINES:
+1. Opening Hook: Acknowledge the exact problem in the description. Demonstrate clear architectural competence immediately.
+2. Technical Solution: 2-3 crisp bullet points specifying the exact implementation strategy (e.g. React/Vite, Node.js API, Prisma indexing, sub-100ms response times).
+3. Deliverables & Timeline: Concrete milestones with realistic turnarounds (e.g. Phase 1 Prototype in 48 hrs; Phase 2 QA & Delivery).
+4. Confident CTA: Offer a 10-minute discovery call or immediate prototype demo.
+
+Keep the tone professional, direct, crisp, and senior.`;
+
+      try {
+        const response = await ai.models.generateContent({
+          model: "gemini-3.7-flash",
+          contents: prompt,
+        });
+        proposalText = response.text || "";
+      } catch (geminiErr: any) {
+        console.warn("[AI Proposal Generation] Gemini API notice, using fallback engine:", geminiErr.message);
+      }
+    }
+
+    if (!proposalText) {
+      proposalText = `Hi ${clientName || "there"},\n\nI reviewed your requirements for "${jobTitle || "your project"}" and specialize in building high-performance full-stack architectures, automated APIs, and scalable TypeScript applications.\n\nHere is how I will approach this project:\n• Architecture & Setup: Scaffold resilient React/Node.js stack with clean state management and type safety.\n• Core Implementation: Build and test the required features (${Array.isArray(skills) ? skills.slice(0, 3).join(", ") : "React, Node.js, APIs"}) with optimized performance and sub-100ms response times.\n• QA & Deployment: Comprehensive testing, automated CI/CD pipeline, and live production handover.\n\nTimeline: Initial functional milestone ready within 48-72 hours.\n\nLet's connect on chat or a quick 5-minute call to discuss your exact timeline and requirements!\n\nBest regards,\nKundan Kumar\nSenior Full-Stack & AI Solutions Engineer`;
+    }
+
+    return res.json({
+      success: true,
+      jobTitle: jobTitle || "Engineering Project",
+      clientName: clientName || "Client",
+      proposal: proposalText,
+      generatedAt: new Date().toISOString(),
+      model: ai ? "gemini-3.7-flash" : "fallback-template-engine"
+    });
+  } catch (err: any) {
+    console.error("[/api/ai/generate-proposal] Error:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || "Failed to generate proposal"
+    });
+  }
+});
 
 // 1. Remote OK, We Work Remotely & FlexJobs Integration Route
 app.use("/api/remoteok", remoteokRoutes);
@@ -451,7 +569,7 @@ app.post("/api/work-orders/complete", (req, res) => {
 });
 
 // Process / Record Bid Earnings Withdrawal with robust DB and Marketplace API try-catch handling
-app.post(["/api/bids/withdraw", "/api/bids/:id/withdraw", "/api/freelancer/withdraw"], async (req, res) => {
+app.post(["/api/bids/withdraw", "/api/bids/:id/withdraw", "/api/freelancer/withdraw"], withdrawRateLimiter, async (req, res) => {
   try {
     const rawBidId = req.params.id || req.body?.bidId;
     const bidId = rawBidId ? String(rawBidId) : 'all';
@@ -460,6 +578,9 @@ app.post(["/api/bids/withdraw", "/api/bids/:id/withdraw", "/api/freelancer/withd
     const payoutMethod = String(req.body?.payoutMethod || 'paypal');
 
     console.log(`[API /api/bids/withdraw] Request received. bidId: "${bidId}", Amount: $${amount}, Platform: "${platform}", PayoutMethod: "${payoutMethod}"`);
+
+    // Invalidate Redis/memory cache on withdrawal
+    await clearBidsCache();
 
     // Parameter validation check
     if (isNaN(amount) || amount < 0) {

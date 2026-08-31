@@ -17,6 +17,27 @@ export default defineConfig(() => {
       assetsDir: 'assets',
       sourcemap: true,
       emptyOutDir: true,
+      chunkSizeWarningLimit: 600,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('react') || id.includes('react-dom')) {
+                return 'vendor-react';
+              }
+              if (id.includes('chart.js') || id.includes('recharts')) {
+                return 'vendor-charts';
+              }
+              if (id.includes('motion') || id.includes('canvas-confetti')) {
+                return 'vendor-motion';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-icons';
+              }
+            }
+          },
+        },
+      },
     },
     server: {
       port: 3000,
