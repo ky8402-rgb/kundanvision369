@@ -1791,6 +1791,50 @@ export interface BackendBidItem {
   cover_letter?: string;
   submitted_at?: string;
   similarity_score?: number;
+  workStatus?: string;
+  work_status?: string;
+  startedAt?: string | null;
+  started_at?: string | null;
+  estimatedDays?: number | null;
+  estimated_days?: number | null;
+  deadline?: string | null;
+  notes?: string;
+}
+
+/**
+ * Updates a bid's work status, startedAt, estimatedDays, deadline, or notes
+ */
+export async function updateBidStatus(
+  bidId: string,
+  payload: {
+    workStatus?: string;
+    work_status?: string;
+    startedAt?: string | null;
+    started_at?: string | null;
+    estimatedDays?: number | null;
+    estimated_days?: number | null;
+    deadline?: string | null;
+    notes?: string;
+  }
+): Promise<{ success: boolean; bid?: any; error?: string }> {
+  try {
+    let res = await fetch(apiUrl(`/api/bids/${encodeURIComponent(bidId)}/status`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      res = await fetch(apiUrl(`/api/freelancer/bids/${encodeURIComponent(bidId)}/status`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    }
+    return await res.json();
+  } catch (err: any) {
+    console.warn(`[updateBidStatus] Error updating bid ${bidId}:`, err);
+    return { success: false, error: err?.message || 'Network error updating bid status' };
+  }
 }
 
 export interface BackendStats {

@@ -7,9 +7,43 @@ import {
   fetchFreelancerLiveProjects,
   getFreelancerRequestHeaders
 } from '../server/freelancerService';
+import { prisma } from '../server/db';
 
 const router = express.Router();
 const dbPath = process.env.SQLITE_DB_PATH || path.join(process.cwd(), 'bids.db');
+
+export interface BidTrackingData {
+  workStatus?: string;
+  work_status?: string;
+  startedAt?: string | null;
+  started_at?: string | null;
+  estimatedDays?: number | null;
+  estimated_days?: number | null;
+  deadline?: string | null;
+  notes?: string;
+}
+
+// Persistent tracking storage for Work Status, startedAt, estimatedDays, deadline, notes
+const bidTrackingFile = path.join(process.cwd(), 'bids_tracking.json');
+
+function loadBidTracking(): Record<string, BidTrackingData> {
+  try {
+    if (fs.existsSync(bidTrackingFile)) {
+      return JSON.parse(fs.readFileSync(bidTrackingFile, 'utf-8'));
+    }
+  } catch (e) {
+    console.warn('[FreelancerBids] Error reading bids_tracking.json:', e);
+  }
+  return {};
+}
+
+function saveBidTracking(data: Record<string, BidTrackingData>) {
+  try {
+    fs.writeFileSync(bidTrackingFile, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('[FreelancerBids] Error saving bids_tracking.json:', e);
+  }
+}
 
 interface BidRecord {
   id: string;
@@ -24,6 +58,14 @@ interface BidRecord {
   job_url: string;
   submitted_at: string;
   updated_at: string;
+  workStatus?: string;
+  work_status?: string;
+  startedAt?: string | null;
+  started_at?: string | null;
+  estimatedDays?: number | null;
+  estimated_days?: number | null;
+  deadline?: string | null;
+  notes?: string;
 }
 
 // Fallback seed records if SQLite db has not been populated yet by python engine
@@ -116,6 +158,37 @@ const fallbackBids: BidRecord[] = [
 
 // Helper to query SQLite via python bridge or fallback
 async function readBidsFromDb(): Promise<BidRecord[]> {
+  const trackingStore = loadBidTracking();
+
+  const enrichBids = (rawBids: BidRecord[]): BidRecord[] => {
+    return rawBids.map((bid) => {
+      const tr = trackingStore[bid.id];
+      const isWon = ['won', 'awarded', 'accepted'].includes(bid.status?.toLowerCase());
+      
+      const workStatus = tr?.workStatus || tr?.work_status || (isWon ? 'In Progress' : 'Not Started');
+      const startedAt = tr?.startedAt || tr?.started_at || (workStatus === 'In Progress' ? (bid.submitted_at || new Date().toISOString()) : null);
+      const estimatedDays = tr?.estimatedDays ?? tr?.estimated_days ?? 7;
+      
+      let deadline = tr?.deadline;
+      if (!deadline && workStatus === 'In Progress' && startedAt) {
+        const startMs = new Date(startedAt).getTime();
+        deadline = new Date(startMs + estimatedDays * 24 * 60 * 60 * 1000).toISOString();
+      }
+
+      return {
+        ...bid,
+        workStatus,
+        work_status: workStatus,
+        startedAt,
+        started_at: startedAt,
+        estimatedDays,
+        estimated_days: estimatedDays,
+        deadline: deadline || null,
+        notes: tr?.notes !== undefined ? tr.notes : '',
+      };
+    });
+  };
+
   return new Promise((resolve) => {
     // If Python CLI is available, execute small script to output JSON from bids table
     const pyScript = `
@@ -141,14 +214,119 @@ conn.close()
         try {
           const parsed = JSON.parse(stdout.trim());
           if (Array.isArray(parsed) && parsed.length > 0) {
-            return resolve(parsed);
+            return resolve(enrichBids(parsed));
           }
         } catch (_) {}
       }
-      resolve(fallbackBids);
+      resolve(enrichBids(fallbackBids));
     });
   });
 }
+
+// PATCH /api/bids/:id/status or /api/bids/:id
+router.patch(['/:id/status', '/:id', '/status/:id'], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      workStatus,
+      work_status,
+      startedAt,
+      started_at,
+      estimatedDays,
+      estimated_days,
+      deadline,
+      notes,
+    } = req.body;
+
+    const trackingStore = loadBidTracking();
+    const existing = trackingStore[id] || {};
+
+    const targetWorkStatus = workStatus || work_status || existing.workStatus || 'In Progress';
+    let targetStartedAt = startedAt || started_at || existing.startedAt;
+    const targetEstimatedDays =
+      estimatedDays !== undefined
+        ? Number(estimatedDays)
+        : estimated_days !== undefined
+        ? Number(estimated_days)
+        : existing.estimatedDays ?? 7;
+
+    let targetDeadline =
+      deadline !== undefined
+        ? deadline
+          ? new Date(deadline).toISOString()
+          : null
+        : existing.deadline;
+    const targetNotes = notes !== undefined ? notes : existing.notes || '';
+
+    // Task B Logic:
+    // When workStatus changes to "In Progress":
+    // 1. Automatically set startedAt to new Date() if not already set.
+    // 2. Automatically calculate deadline = startedAt + (estimatedDays * 24 * 60 * 60 * 1000) if no deadline is explicitly provided.
+    if (targetWorkStatus === 'In Progress') {
+      if (!targetStartedAt) {
+        targetStartedAt = new Date().toISOString();
+      }
+      if (deadline === undefined && (!targetDeadline || targetWorkStatus !== existing.workStatus)) {
+        const startMs = new Date(targetStartedAt).getTime();
+        const days = targetEstimatedDays || 7;
+        targetDeadline = new Date(startMs + days * 24 * 60 * 60 * 1000).toISOString();
+      }
+    }
+
+    if (deadline !== undefined) {
+      targetDeadline = deadline ? new Date(deadline).toISOString() : null;
+    }
+
+    const updatedData: BidTrackingData = {
+      workStatus: targetWorkStatus,
+      work_status: targetWorkStatus,
+      startedAt: targetStartedAt,
+      started_at: targetStartedAt,
+      estimatedDays: targetEstimatedDays,
+      estimated_days: targetEstimatedDays,
+      deadline: targetDeadline,
+      notes: targetNotes,
+    };
+
+    trackingStore[id] = updatedData;
+    saveBidTracking(trackingStore);
+
+    // Sync with database if available
+    try {
+      if (prisma && (prisma as any).bid) {
+        await (prisma as any).bid.upsert({
+          where: { id },
+          update: {
+            workStatus: targetWorkStatus,
+            startedAt: targetStartedAt ? new Date(targetStartedAt) : null,
+            estimatedDays: targetEstimatedDays,
+            deadline: targetDeadline ? new Date(targetDeadline) : null,
+            notes: targetNotes,
+          },
+          create: {
+            id,
+            workStatus: targetWorkStatus,
+            startedAt: targetStartedAt ? new Date(targetStartedAt) : null,
+            estimatedDays: targetEstimatedDays,
+            deadline: targetDeadline ? new Date(targetDeadline) : null,
+            notes: targetNotes,
+          },
+        }).catch(() => {});
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      message: `Bid #${id} status updated successfully`,
+      bid: {
+        id,
+        ...updatedData,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
 
 // GET /api/freelancer/stats
 router.get('/stats', async (_req, res) => {

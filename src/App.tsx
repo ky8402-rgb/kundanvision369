@@ -1583,12 +1583,13 @@ export default function App() {
             </button>
 
             <button
+              id="topbar-btn-settings-backup"
               onClick={() => setIsCredentialsModalOpen(true)}
-              className="bg-[#1a2236] hover:bg-[#232c45] border border-[#2a3147] hover:border-purple-500/50 text-[#9aa2bf] hover:text-white px-3 py-2 rounded-full text-xs font-semibold flex items-center gap-2 transition-all shadow-sm"
-              title="View Remote Stream Architecture & Webhook Status"
+              className="bg-[#1a2236] hover:bg-[#232c45] border border-[#2a3147] hover:border-emerald-500/50 text-[#9aa2bf] hover:text-white px-3 py-2 rounded-full text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+              title="View Platform Credentials, Webhook Architecture & Download JSON State Backup"
             >
-              <i className="fas fa-rss text-[11px] text-emerald-400"></i>
-              <span>Stream Status</span>
+              <i className="fas fa-sliders-h text-[11px] text-cyan-400"></i>
+              <span>Credentials &amp; Backup</span>
             </button>
 
             <button
@@ -2955,12 +2956,22 @@ export default function App() {
 
       </main>
 
-      {/* ===== PLATFORM CREDENTIALS & WEBHOOKS MODAL ===== */}
+      {/* ===== PLATFORM CREDENTIALS, WEBHOOKS & DATA RECOVERY MODAL ===== */}
       <PlatformCredentialsModal
         isOpen={isCredentialsModalOpen}
         onClose={() => setIsCredentialsModalOpen(false)}
         onOrderAdded={(newOrder) => {
           setWorkOrders(prev => [newOrder, ...prev]);
+        }}
+        workOrders={workOrders}
+        transactions={transactions}
+        invoices={invoices}
+        contracts={activeContractsList}
+        profile={userProfile}
+        stats={{
+          walletBalance,
+          todayEarnings,
+          completedOrders
         }}
         showToast={showToast}
       />

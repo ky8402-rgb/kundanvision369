@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BackendBidItem, BACKEND_BASE_URL, withdrawOnFreelancer } from '../services/api';
+import { BackendBidItem, BACKEND_BASE_URL, withdrawOnFreelancer, updateBidStatus } from '../services/api';
 import { formatPackageName } from './PackageChart';
 
 // Conditional logic handler for withdraw destination target URL and styling
@@ -45,10 +45,21 @@ interface BidsTableProps {
   onNotify?: (message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
 }
 
-// Local storage key for persistent work status & notes
+export interface LocalWorkTracking {
+  work_status?: string;
+  workStatus?: string;
+  startedAt?: string | null;
+  started_at?: string | null;
+  estimatedDays?: number;
+  estimated_days?: number;
+  deadline?: string | null;
+  notes?: string;
+}
+
+// Local storage key for persistent work status, deadlines & notes
 const LOCAL_WORK_STORE_KEY = 'gigpilot_work_tracking_v1';
 
-function getWorkTrackingStore(): Record<string, { work_status?: string; notes?: string }> {
+function getWorkTrackingStore(): Record<string, LocalWorkTracking> {
   try {
     return JSON.parse(localStorage.getItem(LOCAL_WORK_STORE_KEY) || '{}');
   } catch {
@@ -56,7 +67,7 @@ function getWorkTrackingStore(): Record<string, { work_status?: string; notes?: 
   }
 }
 
-function saveWorkTrackingStore(store: Record<string, { work_status?: string; notes?: string }>) {
+function saveWorkTrackingStore(store: Record<string, LocalWorkTracking>) {
   try {
     localStorage.setItem(LOCAL_WORK_STORE_KEY, JSON.stringify(store));
   } catch (err) {
@@ -76,7 +87,16 @@ export const BidsTable: React.FC<BidsTableProps> = ({
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
-  const [workTracking, setWorkTracking] = useState<Record<string, { work_status?: string; notes?: string }>>(getWorkTrackingStore());
+  const [nowTime, setNowTime] = useState<number>(Date.now());
+  const [workTracking, setWorkTracking] = useState<Record<string, LocalWorkTracking>>(getWorkTrackingStore());
+
+  // Real-time 60-second ticker for accurate countdown tracking
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setNowTime(Date.now());
+    }, 60000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchBids = useCallback(async () => {
     setLoading(true);
@@ -130,25 +150,88 @@ export const BidsTable: React.FC<BidsTableProps> = ({
     return () => clearInterval(timer);
   }, [fetchBids]);
 
-  // Handle work status change
+  // Handle work status change (Task B & C)
   const handleWorkStatusChange = (bidId: string, newStatus: string) => {
-    const updated = {
+    const currentTrack = workTracking[bidId] || {};
+    let startedAt = currentTrack.startedAt || currentTrack.started_at;
+    let deadline = currentTrack.deadline;
+    const estimatedDays = currentTrack.estimatedDays ?? currentTrack.estimated_days ?? 7;
+
+    // When status changes to "In Progress":
+    // 1. Automatically set startedAt to new Date() if not already set.
+    // 2. Automatically calculate deadline = startedAt + (estimatedDays * 24 * 60 * 60 * 1000).
+    if (newStatus === 'In Progress') {
+      if (!startedAt) {
+        startedAt = new Date().toISOString();
+      }
+      if (!deadline) {
+        const startMs = new Date(startedAt).getTime();
+        deadline = new Date(startMs + estimatedDays * 24 * 60 * 60 * 1000).toISOString();
+      }
+    }
+
+    const updated: Record<string, LocalWorkTracking> = {
       ...workTracking,
       [bidId]: {
-        ...(workTracking[bidId] || {}),
+        ...currentTrack,
         work_status: newStatus,
+        workStatus: newStatus,
+        startedAt,
+        started_at: startedAt,
+        estimatedDays,
+        deadline,
       },
     };
+
     setWorkTracking(updated);
     saveWorkTrackingStore(updated);
+
     if (onNotify) {
       onNotify(`Work status updated to "${newStatus}"`, 'success');
     }
+
+    // Persist to backend
+    updateBidStatus(bidId, {
+      workStatus: newStatus,
+      startedAt,
+      estimatedDays,
+      deadline,
+    }).catch((err) => {
+      console.warn('[BidsTable] Backend sync notice:', err);
+    });
+  };
+
+  // Handle manual deadline adjustment (Task D)
+  const handleDeadlineChange = (bidId: string, rawDateString: string) => {
+    const currentTrack = workTracking[bidId] || {};
+    const newDeadline = rawDateString ? new Date(rawDateString + 'T23:59:59').toISOString() : null;
+
+    const updated: Record<string, LocalWorkTracking> = {
+      ...workTracking,
+      [bidId]: {
+        ...currentTrack,
+        deadline: newDeadline,
+      },
+    };
+
+    setWorkTracking(updated);
+    saveWorkTrackingStore(updated);
+
+    if (onNotify) {
+      onNotify(rawDateString ? `Deadline set to ${rawDateString}` : `Deadline cleared`, 'success');
+    }
+
+    // Persist manual deadline to backend
+    updateBidStatus(bidId, {
+      deadline: newDeadline,
+    }).catch((err) => {
+      console.warn('[BidsTable] Backend sync notice for deadline:', err);
+    });
   };
 
   // Handle notes change
   const handleNoteChange = (bidId: string, noteText: string) => {
-    const updated = {
+    const updated: Record<string, LocalWorkTracking> = {
       ...workTracking,
       [bidId]: {
         ...(workTracking[bidId] || {}),
@@ -163,6 +246,12 @@ export const BidsTable: React.FC<BidsTableProps> = ({
     const note = workTracking[bidId]?.notes?.trim();
     if (note && onNotify) {
       onNotify(`Saved notes for bid #${bidId}`, 'success');
+    }
+    // Sync notes to backend
+    if (workTracking[bidId]) {
+      updateBidStatus(bidId, {
+        notes: workTracking[bidId]?.notes,
+      }).catch(() => {});
     }
   };
 
@@ -190,6 +279,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
         [bid.id]: {
           ...(workTracking[bid.id] || {}),
           work_status: 'Paid',
+          workStatus: 'Paid',
         },
       };
       setWorkTracking(updated);
@@ -294,6 +384,59 @@ export const BidsTable: React.FC<BidsTableProps> = ({
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider border ${badgeStyle}`}>
         <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`}></span>
         {status || 'pending'}
+      </span>
+    );
+  };
+
+  const renderCountdown = (deadline?: string | null, now: number = Date.now()) => {
+    if (!deadline) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/60 text-slate-400 border border-slate-700/50">
+          <i className="far fa-clock text-[10px] opacity-60"></i>
+          <span>Not set</span>
+        </span>
+      );
+    }
+
+    const deadlineMs = new Date(deadline).getTime();
+    if (isNaN(deadlineMs)) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/60 text-slate-400 border border-slate-700/50">
+          <i className="far fa-clock text-[10px] opacity-60"></i>
+          <span>Not set</span>
+        </span>
+      );
+    }
+
+    const diff = deadlineMs - now;
+    const oneHour = 1000 * 60 * 60;
+    const oneDay = 24 * oneHour;
+
+    if (diff < 0) {
+      const overdueDays = Math.max(1, Math.floor(Math.abs(diff) / oneDay));
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm shadow-rose-500/10 whitespace-nowrap">
+          <i className="fas fa-triangle-exclamation text-rose-400 text-[10px]"></i>
+          <span>⚠️ Overdue by {overdueDays} {overdueDays === 1 ? 'day' : 'days'}</span>
+        </span>
+      );
+    }
+
+    if (diff <= oneDay) {
+      const hoursLeft = Math.max(1, Math.floor(diff / oneHour));
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm shadow-amber-500/10 whitespace-nowrap">
+          <i className="fas fa-clock text-amber-400 text-[10px]"></i>
+          <span>{hoursLeft} {hoursLeft === 1 ? 'hour' : 'hours'} left</span>
+        </span>
+      );
+    }
+
+    const daysLeft = Math.ceil(diff / oneDay);
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm shadow-emerald-500/10 whitespace-nowrap">
+        <i className="fas fa-hourglass-half text-emerald-400 text-[10px]"></i>
+        <span>{daysLeft} {daysLeft === 1 ? 'day' : 'days'} left</span>
       </span>
     );
   };
@@ -428,6 +571,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
               <th className="py-3 px-3.5 font-bold">Amount</th>
               <th className="py-3 px-3.5 font-bold">Bid Status</th>
               <th className="py-3 px-3.5 font-bold">Work Status</th>
+              <th className="py-3 px-3.5 font-bold text-center">Time Remaining</th>
               <th className="py-3 px-3.5 font-bold">Notes</th>
               <th className="py-3 px-3.5 font-bold">Action</th>
               <th className="py-3 px-3.5 font-bold">Submitted Date</th>
@@ -436,7 +580,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
           <tbody id="bids-table-body" className="divide-y divide-[#1e293b]/60">
             {loading && bids.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center py-10 text-slate-400">
+                <td colSpan={11} className="text-center py-10 text-slate-400">
                   <div className="flex flex-col items-center justify-center gap-2">
                     <i className="fas fa-circle-notch fa-spin text-emerald-400 text-xl"></i>
                     <span className="text-xs">Fetching latest bids from {BACKEND_BASE_URL}...</span>
@@ -445,7 +589,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
               </tr>
             ) : filteredBids.length === 0 ? (
               <tr>
-                <td colSpan={10} className="text-center py-10 text-slate-500 text-xs">
+                <td colSpan={11} className="text-center py-10 text-slate-500 text-xs">
                   <div className="flex flex-col items-center justify-center gap-1.5">
                     <i className="fas fa-robot text-slate-600 text-2xl mb-1"></i>
                     <p className="font-semibold text-slate-400">No bids match current filter.</p>
@@ -466,6 +610,15 @@ export const BidsTable: React.FC<BidsTableProps> = ({
                 const currentWorkStatus = savedTrack.work_status || (isWon ? 'In Progress' : 'Not Started');
                 const currentNotes = savedTrack.notes || '';
                 const jobUrl = bid.job_url || (bid.id ? `https://freelancer.com/projects/${bid.id}` : '#');
+                
+                // Effective deadline calculation: local store -> backend payload -> automatic default for In Progress
+                let currentDeadline = savedTrack.deadline ?? (bid.deadline || (bid as any).deadline);
+                if (!currentDeadline && currentWorkStatus === 'In Progress') {
+                  const startStr = savedTrack.startedAt || savedTrack.started_at || bid.startedAt || (bid as any).started_at || bid.submitted_at;
+                  const startMs = startStr ? new Date(startStr).getTime() : Date.now();
+                  const days = savedTrack.estimatedDays ?? (bid.estimatedDays || (bid as any).estimated_days || 7);
+                  currentDeadline = new Date(startMs + days * 24 * 60 * 60 * 1000).toISOString();
+                }
 
                 return (
                   <tr
@@ -535,6 +688,33 @@ export const BidsTable: React.FC<BidsTableProps> = ({
                         <option value="Delivered" className="bg-[#0f172a] text-sky-300">Delivered</option>
                         <option value="Paid" className="bg-[#0f172a] text-emerald-300">Paid</option>
                       </select>
+                    </td>
+
+                    {/* Time Remaining & Manual Deadline Adjuster (Task C & Task D) */}
+                    <td className="py-3 px-3.5" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex flex-col items-start gap-1 min-w-[140px]">
+                        {renderCountdown(currentDeadline, nowTime)}
+                        <div className="flex items-center gap-1 mt-0.5 text-[10.5px]">
+                          <span className="text-[10px] text-slate-500 font-medium">Due:</span>
+                          <input
+                            type="date"
+                            value={currentDeadline ? currentDeadline.split('T')[0] : ''}
+                            onChange={(e) => handleDeadlineChange(bidId, e.target.value)}
+                            title="Set or adjust deadline manually"
+                            className="bg-[#0f172a] hover:bg-[#161e31] focus:bg-[#161e31] border border-[#1e293b] focus:border-emerald-500 rounded px-1.5 py-0.5 text-[10px] text-slate-300 font-mono outline-none cursor-pointer"
+                          />
+                          {currentDeadline && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeadlineChange(bidId, '')}
+                              className="text-slate-500 hover:text-rose-400 p-0.5 text-[10px] transition-colors"
+                              title="Clear deadline"
+                            >
+                              <i className="fas fa-times"></i>
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </td>
 
                     {/* Notes Field */}

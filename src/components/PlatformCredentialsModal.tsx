@@ -1,23 +1,41 @@
 import React, { useState, useEffect } from 'react';
 import { getPlatformStatus, PlatformConnectionStatus, fetchRemoteOKJobs, apiUrl } from '../services/api';
+import { exportStateAsBackup, generateBackupJson, BackupDataPayload } from '../utils/exportBackup';
 
 interface PlatformCredentialsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOrderAdded: (order: any) => void;
   showToast: (msg: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
+  workOrders?: any[];
+  transactions?: any[];
+  invoices?: any[];
+  contracts?: any[];
+  profile?: any;
+  stats?: {
+    walletBalance?: number;
+    todayEarnings?: number;
+    completedOrders?: number;
+  };
 }
 
 export default function PlatformCredentialsModal({
   isOpen,
   onClose,
   onOrderAdded,
-  showToast
+  showToast,
+  workOrders = [],
+  transactions = [],
+  invoices = [],
+  contracts = [],
+  profile,
+  stats
 }: PlatformCredentialsModalProps) {
   const [status, setStatus] = useState<PlatformConnectionStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'env' | 'platforms' | 'paypal'>('env');
+  const [activeTab, setActiveTab] = useState<'env' | 'platforms' | 'paypal' | 'backup'>('env');
+  const [copiedBackup, setCopiedBackup] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
@@ -40,6 +58,43 @@ export default function PlatformCredentialsModal({
   const handleCopy = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     showToast(`${label} copied to clipboard!`, 'info');
+  };
+
+  const handleDownloadBackup = () => {
+    try {
+      const payload: BackupDataPayload = {
+        workOrders,
+        transactions,
+        invoices,
+        contracts,
+        profile,
+        stats
+      };
+      const result = exportStateAsBackup(payload);
+      showToast(`💾 Backup downloaded: ${result.filename} (${(result.sizeBytes / 1024).toFixed(1)} KB)`, 'success');
+    } catch (err: any) {
+      showToast(`Failed to export backup: ${err?.message || 'Unknown error'}`, 'error');
+    }
+  };
+
+  const handleCopyBackupJson = () => {
+    try {
+      const payload: BackupDataPayload = {
+        workOrders,
+        transactions,
+        invoices,
+        contracts,
+        profile,
+        stats
+      };
+      const jsonStr = generateBackupJson(payload);
+      navigator.clipboard.writeText(jsonStr);
+      setCopiedBackup(true);
+      showToast('📋 JSON backup payload copied to clipboard!', 'info');
+      setTimeout(() => setCopiedBackup(false), 2000);
+    } catch (err: any) {
+      showToast(`Copy failed: ${err?.message || 'Unknown error'}`, 'error');
+    }
   };
 
   const handleSyncPlatform = async (platformName: 'RemoteOK' | 'WeWorkRemotely' | 'FlexJobs') => {
@@ -99,13 +154,13 @@ export default function PlatformCredentialsModal({
             </div>
             <div>
               <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
-                Production Integrations &amp; Environment
+                Settings, Credentials &amp; Data Recovery
                 <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-medium">
-                  PayPal REST • Remote OK • WWR • FlexJobs
+                  PayPal • Remote OK • JSON Backup
                 </span>
               </h2>
               <p className="text-xs text-[#8d98b8]">
-                Real-time API sync and live PayPal payment gateways with PostgreSQL work order initialization.
+                Real-time API sync, production credentials, webhooks, and manual JSON state backups.
               </p>
             </div>
           </div>
@@ -120,10 +175,10 @@ export default function PlatformCredentialsModal({
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#20273a] bg-[#121624] px-6">
+        <div className="flex border-b border-[#20273a] bg-[#121624] px-6 overflow-x-auto">
           <button
             onClick={() => setActiveTab('env')}
-            className={`py-3 px-4 text-xs font-semibold border-b-2 transition-colors ${
+            className={`py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
               activeTab === 'env'
                 ? 'border-cyan-500 text-cyan-400'
                 : 'border-transparent text-[#8d98b8] hover:text-white'
@@ -133,7 +188,7 @@ export default function PlatformCredentialsModal({
           </button>
           <button
             onClick={() => setActiveTab('platforms')}
-            className={`py-3 px-4 text-xs font-semibold border-b-2 transition-colors ${
+            className={`py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
               activeTab === 'platforms'
                 ? 'border-cyan-500 text-cyan-400'
                 : 'border-transparent text-[#8d98b8] hover:text-white'
@@ -143,13 +198,26 @@ export default function PlatformCredentialsModal({
           </button>
           <button
             onClick={() => setActiveTab('paypal')}
-            className={`py-3 px-4 text-xs font-semibold border-b-2 transition-colors ${
+            className={`py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
               activeTab === 'paypal'
                 ? 'border-cyan-500 text-cyan-400'
                 : 'border-transparent text-[#8d98b8] hover:text-white'
             }`}
           >
             3. PayPal REST API &amp; Webhooks
+          </button>
+          <button
+            onClick={() => setActiveTab('backup')}
+            className={`py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 ${
+              activeTab === 'backup'
+                ? 'border-emerald-500 text-emerald-400'
+                : 'border-transparent text-[#8d98b8] hover:text-white'
+            }`}
+          >
+            <span>4. Data Backup &amp; Recovery</span>
+            <span className="px-1.5 py-0.2 bg-emerald-500/20 text-emerald-300 text-[10px] rounded font-mono font-bold">
+              JSON
+            </span>
           </button>
         </div>
 
@@ -355,13 +423,112 @@ export default function PlatformCredentialsModal({
               </div>
             </div>
           )}
+
+          {activeTab === 'backup' && (
+            <div className="space-y-5">
+              {/* Backup Summary & Action Cards */}
+              <div className="bg-[#161c2d] border border-[#262f48] rounded-xl p-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-[#20273a]">
+                  <div>
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <i className="fas fa-shield-alt text-emerald-400"></i>
+                      <span>Manual State Backup &amp; Disaster Recovery</span>
+                    </h3>
+                    <p className="text-xs text-[#8d98b8] mt-1">
+                      Download a structured JSON archive containing active Work Orders, recorded Transactions, Invoices, and Profile data.
+                    </p>
+                  </div>
+
+                  {/* Primary Download Button */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      id="btn-download-backup-tab"
+                      onClick={handleDownloadBackup}
+                      className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-bold transition-all shadow-lg shadow-emerald-500/20 flex items-center gap-2 cursor-pointer"
+                    >
+                      <i className="fas fa-download"></i>
+                      <span>Download Backup</span>
+                    </button>
+                    <button
+                      onClick={handleCopyBackupJson}
+                      className="px-3 py-2.5 rounded-xl bg-[#0d101a] hover:bg-[#1a2236] border border-[#262f48] text-slate-300 hover:text-white text-xs font-semibold transition-colors flex items-center gap-1.5"
+                      title="Copy raw JSON payload to clipboard"
+                    >
+                      <i className={`fas ${copiedBackup ? 'fa-check text-emerald-400' : 'fa-copy text-slate-400'}`}></i>
+                      <span>{copiedBackup ? 'Copied' : 'Copy JSON'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* State Metrics Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-4">
+                  <div className="p-3 bg-[#0d101a] rounded-lg border border-[#20273a]">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Work Orders</div>
+                    <div className="text-lg font-bold font-mono text-cyan-400 mt-0.5">{workOrders.length}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Tasks &amp; Contracts</div>
+                  </div>
+
+                  <div className="p-3 bg-[#0d101a] rounded-lg border border-[#20273a]">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Transactions</div>
+                    <div className="text-lg font-bold font-mono text-emerald-400 mt-0.5">{transactions.length}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Payment entries</div>
+                  </div>
+
+                  <div className="p-3 bg-[#0d101a] rounded-lg border border-[#20273a]">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Invoices &amp; CRM</div>
+                    <div className="text-lg font-bold font-mono text-indigo-400 mt-0.5">{invoices.length + contracts.length}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">Active records</div>
+                  </div>
+
+                  <div className="p-3 bg-[#0d101a] rounded-lg border border-[#20273a]">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Schema Version</div>
+                    <div className="text-lg font-bold font-mono text-amber-400 mt-0.5">v1.0.0</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">JSON Standalone</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* JSON Live Preview Box */}
+              <div className="bg-[#161c2d] border border-[#262f48] rounded-xl p-4 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <i className="fas fa-code text-cyan-400"></i>
+                    <span>Live JSON Export Preview</span>
+                  </span>
+                  <span className="text-[11px] font-mono text-slate-500">
+                    application/json
+                  </span>
+                </div>
+                <div className="relative">
+                  <pre className="bg-[#090c15] border border-[#20273a] text-[11px] font-mono text-emerald-300 p-3.5 rounded-lg max-h-56 overflow-y-auto leading-relaxed select-all">
+                    {generateBackupJson({ workOrders, transactions, invoices, contracts, profile, stats })}
+                  </pre>
+                </div>
+                <p className="text-[11px] text-[#8d98b8] pt-1">
+                  💡 <strong>Disaster Recovery:</strong> Store this file in cold storage (Google Drive, GitHub private gist, or local disk). You can restore and inspect complete task and ledger history anytime.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-[#20273a] bg-[#161c2d] flex items-center justify-between">
-          <div className="text-xs text-[#8d98b8]">
-            Need help? Check <code className="text-cyan-400 font-mono">.env.example</code> for parameter guidelines.
+        <div className="px-6 py-4 border-t border-[#20273a] bg-[#161c2d] flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <button
+              id="btn-footer-download-backup"
+              onClick={handleDownloadBackup}
+              className="px-3.5 py-2 rounded-xl bg-[#0d101a] hover:bg-emerald-950/50 border border-emerald-500/40 text-emerald-300 hover:text-emerald-200 text-xs font-semibold transition-all flex items-center gap-2 cursor-pointer"
+              title="Download snapshot of Work Orders and Transactions as JSON"
+            >
+              <i className="fas fa-download text-emerald-400"></i>
+              <span>Download Backup ({workOrders.length + transactions.length} items)</span>
+            </button>
+            <span className="hidden sm:inline text-xs text-[#8d98b8]">
+              Schema: <code className="text-cyan-400 font-mono">.json</code>
+            </span>
           </div>
+
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold transition-colors shadow-lg shadow-cyan-500/20"
@@ -374,3 +541,4 @@ export default function PlatformCredentialsModal({
     </div>
   );
 }
+

@@ -10,7 +10,9 @@ import {
   ShieldCheck, 
   Globe, 
   Plus, 
-  Trash2 
+  Trash2,
+  Download,
+  Database
 } from 'lucide-react';
 import { FreelancerProfile, AutopilotRules } from '../types';
 
@@ -21,6 +23,7 @@ interface ProfileSettingsModalProps {
   onSaveProfile: (profile: FreelancerProfile) => void;
   rules: AutopilotRules;
   onSaveRules: (rules: Partial<AutopilotRules>) => void;
+  onDownloadBackup?: () => void;
 }
 
 export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
@@ -29,7 +32,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   profile,
   onSaveProfile,
   rules,
-  onSaveRules
+  onSaveRules,
+  onDownloadBackup
 }) => {
   const [activeTab, setActiveTab] = useState<'profile' | 'api' | 'autopilot'>('profile');
   const [formData, setFormData] = useState<FreelancerProfile>({ ...profile });
@@ -240,12 +244,22 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
           )}
 
           {/* Footer Save */}
-          <div className="flex items-center justify-between border-t border-slate-800 pt-4">
+          <div className="flex flex-wrap items-center justify-between border-t border-slate-800 pt-4 gap-2">
             {savedSuccess ? (
               <span className="flex items-center text-xs font-bold text-emerald-400">
                 <Check className="mr-1.5 h-4 w-4" />
                 Settings Updated Successfully!
               </span>
+            ) : onDownloadBackup ? (
+              <button
+                type="button"
+                onClick={onDownloadBackup}
+                className="flex items-center space-x-1.5 rounded-xl border border-emerald-500/30 bg-emerald-950/40 px-3.5 py-2 text-xs font-semibold text-emerald-300 hover:bg-emerald-900/50 transition-colors"
+                title="Export Work Orders & Transactions as JSON"
+              >
+                <Download className="h-3.5 w-3.5 text-emerald-400" />
+                <span>Download Backup (JSON)</span>
+              </button>
             ) : <span />}
 
             <div className="flex space-x-2">
