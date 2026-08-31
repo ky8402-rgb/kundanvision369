@@ -336,6 +336,21 @@ app.post("/api/work-orders/complete", (req, res) => {
   }
 });
 
+// At the bottom of your route definitions, add:
+console.log('✅ [SERVER] Registered PayPal routes:');
+app._router?.stack?.forEach((r: any) => {
+  if (r.route && r.route.path?.includes('paypal')) {
+    console.log('  ', Object.keys(r.route.methods), r.route.path);
+  } else if (r.name === 'router' && r.handle?.stack) {
+    // Nested routers (e.g. app.use('/api/paypal', ...))
+    r.handle.stack.forEach((subR: any) => {
+      if (subR.route) {
+        console.log('   [nested]', Object.keys(subR.route.methods), subR.route.path);
+      }
+    });
+  }
+});
+
 // -------------------- AUTOMATED BACKGROUND WORKER (CRON) --------------------
 /**
  * Hourly automated background worker that pulls fresh live work orders from
