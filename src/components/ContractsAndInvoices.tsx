@@ -496,7 +496,7 @@ export const ContractsAndInvoices: React.FC<ContractsAndInvoicesProps> = ({
                   <PayPalSdkV6Button
                     amount={Math.max(1, showInvoiceModal.totalValue - showInvoiceModal.amountPaid)}
                     currency="USD"
-                    description={`Milestone Invoice Payment: ${showInvoiceModal.title}`}
+                    description={`Milestone Invoice Payment: ${showInvoiceModal.jobTitle || showInvoiceModal.id}`}
                     clientName={showInvoiceModal.clientName}
                     clientEmail="client@paypal-direct.com"
                     onSuccess={(orderId) => {

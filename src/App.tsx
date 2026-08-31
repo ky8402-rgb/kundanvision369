@@ -99,7 +99,7 @@ const makeUniqueId = (prefix: string = 'id') => `${prefix}_${Date.now()}_${Math.
 
 export default function App() {
   // Navigation State (Default to dynamic live backend dashboard)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'income' | 'remoteok' | 'orders' | 'invoicing' | 'paypal' | 'analytics' | 'notifications' | 'leads' | 'logs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'income' | 'remoteok' | 'orders' | 'invoicing' | 'paypal' | 'bank' | 'analytics' | 'notifications' | 'leads' | 'logs'>('dashboard');
 
   // AI Proposal Studio & Job Analysis State
   const [selectedProposalJob, setSelectedProposalJob] = useState<FreelanceJob | null>(null);
@@ -1334,18 +1334,18 @@ export default function App() {
 
             {/* Nav items */}
             <div className="space-y-1 overflow-y-auto">
-              {[
-                { tab: 'dashboard', label: 'Dashboard', icon: 'fa-th-large', color: '' },
-                { tab: 'leads', label: 'Lead Scoring', icon: 'fa-bullseye', badge: '500 AI', badgeColor: 'bg-indigo-500/20 text-indigo-300' },
-                { tab: 'notifications', label: 'Lead Alerts', icon: 'fab fa-telegram-plane', badge: 'SPEED', badgeColor: 'bg-sky-500/20 text-sky-300' },
-                { tab: 'income', label: 'Real Income Hub', icon: 'fa-hand-holding-usd', badge: 'EARN', badgeColor: 'bg-emerald-500/20 text-emerald-300' },
-                { tab: 'remoteok', label: 'Remote OK Feed', icon: 'fa-globe', badge: 'NO-AUTH', badgeColor: 'bg-[#ff4742]/20 text-[#ff4742]' },
-                { tab: 'orders', label: 'Work Orders', icon: 'fa-clipboard-list', count: activeOrdersCount },
-                { tab: 'invoicing', label: 'Invoicing', icon: 'fa-file-invoice-dollar' },
-                { tab: 'paypal', label: 'PayPal REST API', icon: 'fab fa-paypal', badge: 'v2 LIVE', badgeColor: 'bg-[#00cfe8]/20 text-[#00cfe8]' },
-                { tab: 'analytics', label: 'Analytics', icon: 'fa-chart-line' },
-                { tab: 'logs', label: 'Activity Logs', icon: 'fa-terminal', badge: 'DEBUG', badgeColor: 'bg-indigo-500/20 text-indigo-300' }
-              ].map((item) => (
+              {([
+                { tab: 'dashboard' as const, label: 'Dashboard', icon: 'fa-th-large', color: '', badge: undefined, badgeColor: undefined, count: undefined },
+                { tab: 'leads' as const, label: 'Lead Scoring', icon: 'fa-bullseye', color: '', badge: '500 AI', badgeColor: 'bg-indigo-500/20 text-indigo-300', count: undefined },
+                { tab: 'notifications' as const, label: 'Lead Alerts', icon: 'fab fa-telegram-plane', color: '', badge: 'SPEED', badgeColor: 'bg-sky-500/20 text-sky-300', count: undefined },
+                { tab: 'income' as const, label: 'Real Income Hub', icon: 'fa-hand-holding-usd', color: '', badge: 'EARN', badgeColor: 'bg-emerald-500/20 text-emerald-300', count: undefined },
+                { tab: 'remoteok' as const, label: 'Remote OK Feed', icon: 'fa-globe', color: '', badge: 'NO-AUTH', badgeColor: 'bg-[#ff4742]/20 text-[#ff4742]', count: undefined },
+                { tab: 'orders' as const, label: 'Work Orders', icon: 'fa-clipboard-list', color: '', count: activeOrdersCount, badge: undefined, badgeColor: undefined },
+                { tab: 'invoicing' as const, label: 'Invoicing', icon: 'fa-file-invoice-dollar', color: '', badge: undefined, badgeColor: undefined, count: undefined },
+                { tab: 'paypal' as const, label: 'PayPal REST API', icon: 'fab fa-paypal', color: '', badge: 'v2 LIVE', badgeColor: 'bg-[#00cfe8]/20 text-[#00cfe8]', count: undefined },
+                { tab: 'analytics' as const, label: 'Analytics', icon: 'fa-chart-line', color: '', badge: undefined, badgeColor: undefined, count: undefined },
+                { tab: 'logs' as const, label: 'Activity Logs', icon: 'fa-terminal', color: '', badge: 'DEBUG', badgeColor: 'bg-indigo-500/20 text-indigo-300', count: undefined }
+              ]).map((item) => (
                 <button
                   key={item.tab}
                   onClick={() => {
@@ -3004,35 +3004,35 @@ export default function App() {
         }}
         job={selectedProposalJob}
         profile={userProfile}
-        showToast={showToast}
-        onSubmitProposal={async (jobId, proposal) => {
+        onSubmitBid={async (job, proposal) => {
+          const jobId = job.id;
           try {
-            showToast(`🚀 Submitting pitch for "${selectedProposalJob?.title || 'Contract'}"...`, 'info');
+            showToast(`🚀 Submitting pitch for "${job?.title || 'Contract'}"...`, 'info');
             
             await submitLivePlatformBid(jobId, {
               coverLetter: proposal.coverLetter,
-              bidAmount: proposal.proposedBudget,
-              deliveryDays: proposal.estimatedDeliveryDays
+              bidAmount: proposal.bidAmount,
+              deliveryDays: proposal.estimatedDays
             });
 
             // Update Work Order to in-progress
             setWorkOrders(prev => {
               const existing = prev.find(o => String(o.id) === String(jobId));
               if (existing) {
-                return prev.map(o => String(o.id) === String(jobId) ? { ...o, status: 'in-progress', amount: proposal.proposedBudget } : o);
-              } else if (selectedProposalJob) {
+                return prev.map(o => String(o.id) === String(jobId) ? { ...o, status: 'in-progress', amount: proposal.bidAmount } : o);
+              } else if (job) {
                 const newOrder: WorkOrder = {
-                  id: selectedProposalJob.id,
-                  externalId: selectedProposalJob.id,
-                  title: selectedProposalJob.title,
-                  platform: selectedProposalJob.platform,
+                  id: job.id,
+                  externalId: job.id,
+                  title: job.title,
+                  platform: job.platform,
                   status: 'in-progress',
-                  amount: proposal.proposedBudget,
-                  category: selectedProposalJob.skills[0] || 'Software Dev',
+                  amount: proposal.bidAmount,
+                  category: job.skills[0] || 'Software Dev',
                   time: 'Just now',
-                  clientName: selectedProposalJob.client.name,
-                  description: selectedProposalJob.description,
-                  url: selectedProposalJob.platformUrl
+                  clientName: job.client.name,
+                  description: job.description,
+                  url: job.platformUrl
                 };
                 return [newOrder, ...prev];
               }
@@ -3042,21 +3042,21 @@ export default function App() {
             // Stage contract in Contracts & Invoices
             const newContract: ActiveContract = {
               id: `CON-${Date.now().toString().slice(-4)}`,
-              jobTitle: selectedProposalJob?.title || 'Custom Engineering Scope',
-              platform: (selectedProposalJob?.platform as any) || 'RemoteOK',
-              clientName: selectedProposalJob?.client.name || 'Direct Enterprise Client',
-              totalValue: proposal.proposedBudget,
+              jobTitle: job?.title || 'Custom Engineering Scope',
+              platform: (job?.platform as any) || 'RemoteOK',
+              clientName: job?.client.name || 'Direct Enterprise Client',
+              totalValue: proposal.bidAmount,
               amountPaid: 0,
               status: 'in_progress',
-              milestones: proposal.milestoneBreakdown && proposal.milestoneBreakdown.length > 0 ? proposal.milestoneBreakdown.map((m, idx) => ({
+              milestones: proposal.proposedMilestones && proposal.proposedMilestones.length > 0 ? proposal.proposedMilestones.map((m, idx) => ({
                 id: `M${idx + 1}`,
-                title: m.description,
+                title: m.name,
                 amount: m.amount,
                 completed: false,
-                dueDate: `Day ${m.days}`
+                dueDate: `Day ${m.durationDays}`
               })) : [
-                { id: 'M1', title: 'Initial Prototype & Architecture Setup', amount: Math.round(proposal.proposedBudget * 0.5), completed: false, dueDate: '3 Days' },
-                { id: 'M2', title: 'Full Implementation & Test Suite Delivery', amount: Math.round(proposal.proposedBudget * 0.5), completed: false, dueDate: `${proposal.estimatedDeliveryDays} Days` }
+                { id: 'M1', title: 'Initial Prototype & Architecture Setup', amount: Math.round(proposal.bidAmount * 0.5), completed: false, dueDate: '3 Days' },
+                { id: 'M2', title: 'Full Implementation & Test Suite Delivery', amount: Math.round(proposal.bidAmount * 0.5), completed: false, dueDate: `${proposal.estimatedDays} Days` }
               ],
               startedDate: 'Today'
             };
@@ -3084,8 +3084,8 @@ export default function App() {
           setSelectedAnalysisJob(null);
         }}
         job={selectedAnalysisJob}
-        showToast={showToast}
-        onGenerateProposal={(job) => {
+        profile={userProfile}
+        onProceedToPitch={(job) => {
           setIsAnalysisModalOpen(false);
           setSelectedProposalJob(job);
           setIsProposalStudioOpen(true);

@@ -491,7 +491,7 @@ export const WithdrawalSummary: React.FC<WithdrawalSummaryProps> = ({
                       ID: {bidDbId}
                     </span>
                     <span className="font-semibold text-white truncate max-w-[180px] sm:max-w-[260px]">
-                      {bid.title || bid.package || 'Contract Project'}
+                      {(bid as any).title || bid.package || 'Contract Project'}
                     </span>
                     <span className="text-emerald-400 font-mono font-bold">
                       ${amount.toFixed(2)} USD

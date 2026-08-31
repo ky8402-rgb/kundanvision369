@@ -700,7 +700,7 @@ export const RawPayloadStreamTab: React.FC<RawPayloadStreamTabProps> = ({ onNavi
                           {selectedLog.signatureVerification.verified ? 'VALID SIGNATURE • HMAC-SHA256 VERIFIED' : 'SIGNATURE REJECTED / MISMATCH'}
                         </div>
                         <div className="text-[11px] opacity-80">
-                          {selectedLog.signatureVerification.details || 'Evaluated against runtime secret using constant-time comparison.'}
+                          {(selectedLog.signatureVerification as any).details || selectedLog.signatureVerification.reason || 'Evaluated against runtime secret using constant-time comparison.'}
                         </div>
                       </div>
                     </div>
