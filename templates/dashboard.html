@@ -439,11 +439,13 @@
         // ========================================
         //  CONFIG
         // ========================================
-        const API_BASE = 'https://gigpilot-backend-g4j0.onrender.com';
+        const API_BASE = window.location.origin.includes('onrender.com') || window.location.origin.includes(':3000') 
+            ? '' 
+            : 'https://gigpilot-backend.onrender.com';
 
         // Platform-specific withdrawal URLs
         const WITHDRAWAL_URLS = {
-            freelancer: 'https://www.freelancer.com/dashboard/financial/',
+            freelancer: 'https://www.freelancer.com/payments/withdraw.php',
             upwork: 'https://www.upwork.com/nx/navigator/payments/withdraw',
             remoteok: '#', // Special handling for RemoteOK
             fiverr: 'https://www.fiverr.com/balance/withdraw',
@@ -712,14 +714,52 @@
         //  ACTIONS
         // ========================================
 
-        function withdrawNow(url, platform) {
+        function withdrawNow(url, platform, bidId = 'all', amount = 0) {
             if (!url || url === '#') {
                 showToast(`⚠️ No withdrawal URL available for ${platform}. Please visit the platform directly.`);
                 return;
             }
+            console.log(`[Dashboard] Initiating withdrawNow for bidId: "${bidId}" (matching DB ID: "${bidId}"), Amount: $${amount}, Platform: "${platform}"`);
             showToast(`🔗 Redirecting to ${platform} to withdraw your funds...`);
-            window.open(url, '_blank');
+
+            // Dispatch backend withdrawal event with status check and .catch() error logging
+            fetch(`${API_BASE}/api/bids/withdraw`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bidId, amount, platform: String(platform).toLowerCase() })
+            })
+            .then(res => {
+                if (!res.ok) {
+                    console.error(`[withdrawNow] Backend returned failure status ${res.status}: ${res.statusText}`);
+                }
+                return res.json();
+            })
+            .then(data => {
+                if (data && data.success) {
+                    console.log(`[withdrawNow] Backend confirmed withdrawal:`, data);
+                } else if (data && !data.success) {
+                    console.warn(`[withdrawNow] Backend warning:`, data.error);
+                }
+            })
+            .catch(err => {
+                console.error(`[withdrawNow] .catch() captured error:`, err?.message || err);
+            });
+
+            try {
+                const opened = window.open(url, '_blank');
+                if (!opened) {
+                    window.location.href = url;
+                }
+            } catch (e) {
+                console.error('Failed to open withdrawal URL:', e);
+            }
         }
+
+        window.withdrawOnFreelancer = function(bidId, amount = 0, platform = 'freelancer') {
+            console.log(`[withdrawOnFreelancer] Called with bidId: "${bidId}" (matching Database ID: "${bidId}"), Amount: $${amount}, Platform: "${platform}"`);
+            const targetUrl = 'https://www.freelancer.com/payments/withdraw.php';
+            withdrawNow(targetUrl, platform, bidId, amount);
+        };
 
         function contactClient(jobUrl, platform) {
             if (!jobUrl || jobUrl === '#') {

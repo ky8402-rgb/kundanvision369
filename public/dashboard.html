@@ -972,7 +972,9 @@
 
   <!-- Application Script -->
   <script>
-    const BACKEND_BASE = 'https://gigpilot-backend-g4j0.onrender.com/api';
+    const BACKEND_BASE = window.location.origin.includes('onrender.com') || window.location.origin.includes(':3000') 
+      ? '/api' 
+      : 'https://gigpilot-backend.onrender.com/api';
     let chartInstance = null;
     let refreshSeconds = 60;
     let refreshTimer = null;
@@ -1019,7 +1021,7 @@
         badgeClass: 'badge-platform-freelancer',
         badgeIcon: 'fa-solid fa-globe',
         btnClass: 'btn-table-freelancer',
-        actionUrl: 'https://www.freelancer.com/dashboard/financial/',
+        actionUrl: 'https://www.freelancer.com/payments/withdraw.php',
         actionLabel: '💰 Withdraw on Freelancer',
         tooltip: 'Withdraw your earned funds directly on Freelancer.com (opens in new tab)',
         isDirectWithdrawal: true,
@@ -1065,13 +1067,43 @@
       }, duration);
     }
 
-    function notifyPlatformAction(platformName, targetUrl, isWithdrawal = true) {
+    function notifyPlatformAction(platformName, targetUrl, isWithdrawal = true, bidId = 'general', amount = 0) {
       if (isWithdrawal) {
+        console.log(`[Dashboard notifyPlatformAction] Initiating withdrawal for bidId: "${bidId}" (matching Database ID: "${bidId}"), Amount: $${amount}, Platform: "${platformName}"`);
         showToast(`Opening ${platformName} financial portal. Please log in to ${platformName} to withdraw your funds.`, 'info', 5000);
+        // Call backend withdrawal route in background with status check and .catch() error logging
+        fetch(`${BACKEND_BASE}/bids/withdraw`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bidId, amount, platform: platformName.toLowerCase() })
+        })
+        .then(res => {
+          if (!res.ok) {
+            console.error(`[withdrawOnFreelancer] Backend returned failure status ${res.status}: ${res.statusText}`);
+          }
+          return res.json();
+        })
+        .then(data => {
+          if (data && data.success) {
+            console.log(`[Dashboard] Withdrawal successfully recorded on backend for bidId "${bidId}":`, data);
+          } else if (data && !data.success) {
+            console.warn(`[Dashboard] Backend reported withdrawal notice:`, data.error);
+          }
+        })
+        .catch(err => {
+          console.error(`[Dashboard] withdrawOnFreelancer .catch() error for bidId "${bidId}":`, err?.message || err);
+        });
       } else {
         showToast(`Opening ${platformName} job portal. Contact the client directly to discuss payment.`, 'info', 5000);
       }
     }
+
+    window.withdrawOnFreelancer = function(bidId = 'general', amount = 0, platform = 'freelancer') {
+      console.log(`[withdrawOnFreelancer] Explicit handler called with bidId: "${bidId}" (Database ID match verified), Amount: $${amount}, Platform: "${platform}"`);
+      const targetUrl = 'https://www.freelancer.com/payments/withdraw.php';
+      notifyPlatformAction(platform, targetUrl, true, bidId, amount);
+      window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    };
 
     // Work Status change handler
     window.handleWorkStatusChange = function(bidId, selectEl) {

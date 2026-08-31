@@ -1955,6 +1955,7 @@ export default function App() {
             <WithdrawalSummary
               bids={backendBids}
               stats={backendStats}
+              onNotify={(msg, type) => showToast(msg, type)}
               onWithdrawPlatform={(platformName, amount) => {
                 showToast(`Routing to secure withdrawal gateway for ${platformName} ($${amount.toFixed(2)})`, 'info');
               }}

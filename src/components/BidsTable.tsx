@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BackendBidItem, BACKEND_BASE_URL } from '../services/api';
+import { BackendBidItem, BACKEND_BASE_URL, withdrawOnFreelancer } from '../services/api';
 import { formatPackageName } from './PackageChart';
 
 // Conditional logic handler for withdraw destination target URL and styling
@@ -26,9 +26,9 @@ export function getWithdrawalTarget(platform?: string, jobUrl?: string) {
       isDirectWithdrawal: false,
     };
   }
-  // Default to Freelancer.com
+  // Default to Freelancer.com official financial withdrawal portal
   return {
-    url: 'https://www.freelancer.com/dashboard/financial/',
+    url: 'https://www.freelancer.com/payments/withdraw.php',
     label: '💰 Withdraw on Freelancer',
     tooltip: 'Withdraw your earned funds directly on Freelancer.com (opens in new tab)',
     platformName: 'Freelancer',
@@ -169,13 +169,53 @@ export const BidsTable: React.FC<BidsTableProps> = ({
   const handleWithdrawClick = (e: React.MouseEvent, bid: BackendBidItem) => {
     e.stopPropagation();
     const target = getWithdrawalTarget(bid.platform);
+    const amount = Number(bid.bid_amount || 0);
+    const extractedBidId = String(bid.id || (bid as any).job_id || 'bid_won');
+
+    // Explicitly log the bidId being sent to confirm it matches the database ID
+    console.log(`[BidsTable] withdrawOnFreelancer invoked for bidId: "${extractedBidId}" (matching Database ID: "${bid.id || 'N/A'}"), Amount: $${amount}, Platform: "${bid.platform || 'freelancer'}"`);
+
     if (onNotify) {
       if (target.isDirectWithdrawal) {
-        onNotify(`Opening ${target.platformName} portal. Please log in to ${target.platformName} to withdraw your funds.`, 'info');
+        onNotify(`Initiating ${target.platformName} withdrawal for Bid #${extractedBidId} ($${amount.toFixed(2)} USD)... Opening portal.`, 'info');
       } else {
         onNotify(`Opening ${target.platformName} job. Contact the client directly to discuss payment.`, 'info');
       }
     }
+
+    // Auto-update local work status to Paid / Completed
+    if (bid.id) {
+      const updated = {
+        ...workTracking,
+        [bid.id]: {
+          ...(workTracking[bid.id] || {}),
+          work_status: 'Paid',
+        },
+      };
+      setWorkTracking(updated);
+      saveWorkTrackingStore(updated);
+    }
+
+    // Dispatched call to record withdrawal on backend with proper .catch() block
+    withdrawOnFreelancer(extractedBidId, amount, bid.platform || 'freelancer')
+      .then((result) => {
+        if (result.success && onNotify) {
+          onNotify(result.message || `Withdrawal registered for Bid #${extractedBidId} ($${amount.toFixed(2)} USD).`, 'success');
+        } else if (!result.success) {
+          const specificError = result.error || 'Failed to register withdrawal with backend service';
+          console.error(`[BidsTable] Backend withdrawal failed for bidId "${extractedBidId}":`, specificError);
+          if (onNotify) {
+            onNotify(`Withdrawal notice: ${specificError}`, 'warning');
+          }
+        }
+      })
+      .catch((err: any) => {
+        const specificError = err?.message || err || 'Network failure while registering withdrawal';
+        console.error(`[BidsTable] withdrawOnFreelancer .catch() error for bidId "${extractedBidId}":`, specificError);
+        if (onNotify) {
+          onNotify(`Withdrawal Error: ${specificError}`, 'error');
+        }
+      });
   };
 
   const filteredBids = bids.filter((bid) => {

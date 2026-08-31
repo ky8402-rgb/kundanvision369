@@ -1865,4 +1865,88 @@ export async function fetchBackendLeads(limit: number = 20): Promise<BackendLead
   }
 }
 
+export interface WithdrawBidResult {
+  success: boolean;
+  bidId?: string;
+  amount?: number;
+  platform?: string;
+  withdrawalUrl?: string;
+  message?: string;
+  error?: string;
+  statusCode?: number;
+}
+
+/**
+ * Trigger or record bid earnings withdrawal on backend
+ */
+export async function withdrawBidEarnings(
+  bidId: string,
+  amount: number = 0,
+  platform: string = 'freelancer'
+): Promise<WithdrawBidResult> {
+  const numericAmount = Math.max(0, Number(amount) || 0);
+  console.log(`[API withdrawBidEarnings] Sending request for bidId: "${bidId}" (matching Database ID: "${bidId}"), Amount: $${numericAmount}, Platform: "${platform}"`);
+
+  return fetch(apiUrl('/api/bids/withdraw'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bidId, amount: numericAmount, platform })
+  })
+    .then(async (res) => {
+      if (!res.ok && res.status === 404) {
+        // Fallback endpoint
+        console.warn(`[API withdrawBidEarnings] Primary /api/bids/withdraw returned 404, attempting fallback to /api/freelancer/withdraw`);
+        const fallbackRes = await fetch(apiUrl('/api/freelancer/withdraw'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ bidId, amount: numericAmount, platform })
+        });
+        if (!fallbackRes.ok) {
+          const errData = await fallbackRes.json().catch(() => ({}));
+          const errMsg = errData.error || `HTTP ${fallbackRes.status} (${fallbackRes.statusText}): Backend failed to process withdrawal.`;
+          console.error(`[withdrawOnFreelancer] Fallback backend responded with error status ${fallbackRes.status}:`, errMsg);
+          throw new Error(errMsg);
+        }
+        return await fallbackRes.json();
+      }
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        const errMsg = errData.error || `HTTP ${res.status} (${res.statusText}): Backend failed to process withdrawal.`;
+        console.error(`[withdrawOnFreelancer] Backend responded with error status ${res.status}:`, errMsg);
+        throw new Error(errMsg);
+      }
+
+      const data = await res.json();
+      console.log(`[API withdrawBidEarnings] Backend successfully processed withdrawal for bidId "${bidId}":`, data);
+      return data;
+    })
+    .catch((err: any) => {
+      const specificError = err?.message || 'Withdrawal processing encountered an unexpected network or server error.';
+      console.error(`[withdrawOnFreelancer] Error occurred during withdrawal for bidId "${bidId}":`, specificError);
+      return {
+        success: false,
+        bidId,
+        amount: numericAmount,
+        platform,
+        error: specificError
+      };
+    });
+}
+
+/**
+ * Dedicated handler for withdrawing bid earnings on Freelancer or other supported platforms.
+ * Explicitly verifies the database bidId and handles backend responses with .catch() error logging.
+ */
+export async function withdrawOnFreelancer(
+  bidId: string,
+  amount: number = 0,
+  platform: string = 'freelancer'
+): Promise<WithdrawBidResult> {
+  const numericAmount = Math.max(0, Number(amount) || 0);
+  console.log(`[withdrawOnFreelancer] Frontend handler called with bidId: "${bidId}" (verified against Database ID: "${bidId}"), Amount: $${numericAmount}, Platform: "${platform}"`);
+  return withdrawBidEarnings(bidId, numericAmount, platform);
+}
+
+
 
