@@ -14,6 +14,8 @@ import {
   DollarSign
 } from 'lucide-react';
 
+import { PayPalSdkV6Button } from './PayPalSdkV6Button';
+
 interface PayPalConnectModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -171,29 +173,21 @@ export const PayPalConnectModal: React.FC<PayPalConnectModalProps> = ({
               </div>
             </div>
 
-            {/* Custom Link Builder */}
-            <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row items-center gap-3">
-              <div className="flex-1 w-full flex items-center gap-2">
-                <span className="text-xs text-slate-400 whitespace-nowrap">Invoice Amount ($):</span>
-                <input
-                  type="number"
-                  min="1"
-                  value={customAmount}
-                  onChange={(e) => setCustomAmount(e.target.value)}
-                  className="w-24 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs text-white font-mono font-bold focus:border-blue-500 focus:outline-none"
-                />
-                <span className="text-xs text-slate-500 font-mono">≈ ₹{inrEquivalent.toLocaleString('en-IN')} INR</span>
-              </div>
-
-              <a
-                href={`https://paypal.me/${PAYPAL_HANDLE}/${amountNum}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full sm:w-auto flex items-center justify-center gap-1.5 rounded-xl bg-gradient-to-r from-[#003087] to-[#0070ba] hover:from-[#00256c] hover:to-[#005ea6] text-white px-4 py-2 text-xs font-bold transition-all shadow-md shadow-blue-950/50"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Open ${amountNum} USD Checkout</span>
-              </a>
+            {/* PayPal JS SDK v6 Direct Checkout Component */}
+            <div className="pt-2">
+              <PayPalSdkV6Button
+                amount={amountNum}
+                currency="USD"
+                description={`Direct Freelance Milestone Payment ($${amountNum})`}
+                clientName="Direct Client"
+                clientEmail="client@paypal-direct.com"
+                onSuccess={(orderId) => {
+                  showToast(`✅ PayPal SDK v6 Payment Captured! Order: ${orderId}`, 'success');
+                }}
+                onError={(err) => {
+                  showToast(`PayPal SDK notice: ${err?.message || 'Handled'}`, 'info');
+                }}
+              />
             </div>
           </div>
         )}

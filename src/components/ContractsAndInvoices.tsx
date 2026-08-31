@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { ActiveContract } from '../types';
 import { generateClientReply } from '../services/api';
+import { PayPalSdkV6Button } from './PayPalSdkV6Button';
 
 interface ContractsAndInvoicesProps {
   contracts: ActiveContract[];
@@ -488,6 +489,26 @@ export const ContractsAndInvoices: React.FC<ContractsAndInvoicesProps> = ({
                     <div className="text-slate-300">Direct Link: <a href="https://paypal.me/ky8402" target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline font-mono">paypal.me/ky8402</a></div>
                     <div className="text-slate-300">Email: <strong className="text-white font-mono">kundank4@icloud.com</strong></div>
                   </div>
+                </div>
+
+                {/* Instant PayPal SDK v6 Checkout Button */}
+                <div className="pt-2">
+                  <PayPalSdkV6Button
+                    amount={Math.max(1, showInvoiceModal.totalValue - showInvoiceModal.amountPaid)}
+                    currency="USD"
+                    description={`Milestone Invoice Payment: ${showInvoiceModal.title}`}
+                    clientName={showInvoiceModal.clientName}
+                    clientEmail="client@paypal-direct.com"
+                    onSuccess={(orderId) => {
+                      if (showInvoiceModal.milestones.length > 0) {
+                        const firstIncomplete = showInvoiceModal.milestones.find(m => !m.completed);
+                        if (firstIncomplete) {
+                          onCompleteMilestone(showInvoiceModal.id, firstIncomplete.id);
+                        }
+                      }
+                      setShowInvoiceModal(null);
+                    }}
+                  />
                 </div>
               </div>
             </div>

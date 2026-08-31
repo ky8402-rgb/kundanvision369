@@ -23,6 +23,8 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 
+import { PayPalSdkV6Button } from './PayPalSdkV6Button';
+
 interface RealIncomeHubProps {
   onPaymentReceived: (amount: number, clientName: string, description: string) => void;
   onNavigateToTab: (tab: string) => void;
@@ -746,20 +748,29 @@ Thank you for your business!`;
                     <strong className="text-blue-400 font-mono">@{PAYPAL_HANDLE}</strong>
                   </div>
                   <div className="flex items-center justify-between text-slate-300">
-                    <span>Checkout Amount:</span>
+                    <span>Package Price:</span>
                     <strong className="text-emerald-400 font-mono text-sm">${selectedPackage.priceUsd}.00 USD</strong>
                   </div>
                 </div>
 
-                <a
-                  href={getPayPalUrl(selectedPackage.priceUsd)}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#003087] to-[#0070ba] hover:from-[#00256c] hover:to-[#005ea6] text-white py-3.5 text-xs font-extrabold shadow-lg shadow-blue-900/30 transition-all"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  <span>Open Official PayPal Checkout (${selectedPackage.priceUsd} USD)</span>
-                </a>
+                <div className="pt-2">
+                  <PayPalSdkV6Button
+                    amount={selectedPackage.priceUsd}
+                    currency="USD"
+                    description={`Client Order: ${selectedPackage.title}`}
+                    clientName="Valued Client"
+                    clientEmail="client@paypal-direct.com"
+                    onSuccess={(orderId) => {
+                      confetti({ particleCount: 70, spread: 60, origin: { y: 0.6 } });
+                      onPaymentReceived(selectedPackage.priceUsd, 'PayPal Client', selectedPackage.title);
+                      showToast(`🎉 PayPal v6 Payment Captured! Work Order initialized.`, 'success');
+                      setCheckoutModalOpen(false);
+                    }}
+                    onError={(err) => {
+                      showToast(`PayPal SDK notice: ${err?.message || 'Handled'}`, 'info');
+                    }}
+                  />
+                </div>
               </div>
             )}
 

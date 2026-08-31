@@ -14,7 +14,7 @@ export interface PayPalConfig {
 // Default in-memory config initialized from environment variables or verified defaults
 let payPalConfig: PayPalConfig = {
   clientId: process.env.PAYPAL_CLIENT_ID || 'BAAv8rRenc5jlfD6eH_8pvgcU250jXTZCnyPKdBby13EAYRKhCempoPQ3Hj41GEfe2qBMu1P8ZslnbdkIc',
-  clientSecret: process.env.PAYPAL_CLIENT_SECRET || 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N',
+  clientSecret: process.env.PAYPAL_CLIENT_SECRET || process.env.PAYPAL_SECRET || 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N',
   mode: (process.env.PAYPAL_MODE === 'sandbox') ? 'sandbox' : 'live',
   receiverEmail: process.env.PAYPAL_RECEIVER_EMAIL || 'kundank4@icloud.com',
   paypalMeUsername: process.env.PAYPAL_ME_USERNAME || 'ky8402',
@@ -28,7 +28,7 @@ export function getPayPalConfig(): PayPalConfig {
   return {
     ...payPalConfig,
     clientId: (process.env.PAYPAL_CLIENT_ID || payPalConfig.clientId || 'BAAv8rRenc5jlfD6eH_8pvgcU250jXTZCnyPKdBby13EAYRKhCempoPQ3Hj41GEfe2qBMu1P8ZslnbdkIc').trim(),
-    clientSecret: (process.env.PAYPAL_CLIENT_SECRET || payPalConfig.clientSecret || 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N').trim(),
+    clientSecret: (process.env.PAYPAL_CLIENT_SECRET || process.env.PAYPAL_SECRET || payPalConfig.clientSecret || 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N').trim(),
     mode: process.env.PAYPAL_MODE ? envMode : (payPalConfig.mode || 'live'),
     receiverEmail: (process.env.PAYPAL_RECEIVER_EMAIL || payPalConfig.receiverEmail || 'kundank4@icloud.com').trim(),
     paypalMeUsername: (process.env.PAYPAL_ME_USERNAME || payPalConfig.paypalMeUsername || 'ky8402').trim(),
