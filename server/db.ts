@@ -7,15 +7,16 @@ declare global {
 
 // Check if a real DATABASE_URL is configured
 const rawDbUrl = (process.env.DATABASE_URL || '').trim();
+const isValidPostgresUrl = (url: string) => url.startsWith('postgresql://') || url.startsWith('postgres://');
 const fallbackDbUrl = 'postgresql://postgres:postgres@127.0.0.1:5432/freelancedb?schema=public';
 
-if (!process.env.DATABASE_URL || process.env.DATABASE_URL.trim() === '') {
+if (!process.env.DATABASE_URL || !isValidPostgresUrl(process.env.DATABASE_URL.trim())) {
   process.env.DATABASE_URL = fallbackDbUrl;
 }
 
 export const isDatabaseConfigured = Boolean(
   rawDbUrl &&
-  rawDbUrl !== '' &&
+  isValidPostgresUrl(rawDbUrl) &&
   !rawDbUrl.includes('127.0.0.1:5432/freelancedb') &&
   !rawDbUrl.includes('user:password@localhost') &&
   !rawDbUrl.includes('dummy')
@@ -25,12 +26,16 @@ export const isDatabaseConfigured = Boolean(
 let realPrismaInstance: PrismaClient | null = null;
 function getRealPrisma(): PrismaClient {
   if (!realPrismaInstance) {
+    const activeUrl = isValidPostgresUrl((process.env.DATABASE_URL || '').trim())
+      ? (process.env.DATABASE_URL || '').trim()
+      : fallbackDbUrl;
+
     realPrismaInstance =
       globalThis.prismaGlobal ??
       new PrismaClient({
         datasources: {
           db: {
-            url: (process.env.DATABASE_URL || '').trim() || fallbackDbUrl,
+            url: activeUrl,
           },
         },
         log: ['warn'],

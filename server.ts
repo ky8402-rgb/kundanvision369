@@ -9,22 +9,22 @@ import { createServer as createViteServer } from "vite";
 // =========================================================================
 // 1. CRITICAL DATABASE_URL VALIDATION (Prisma & PostgreSQL)
 // =========================================================================
-const rawDbUrl = process.env.DATABASE_URL?.trim();
+const rawDbUrl = (process.env.DATABASE_URL || "").trim();
 
-if (process.env.NODE_ENV === "production" || process.env.RENDER) {
-  if (!rawDbUrl || (!rawDbUrl.startsWith("postgresql://") && !rawDbUrl.startsWith("postgres://"))) {
-    console.error("\n==================================================================");
-    console.error("❌ [FATAL DATABASE CONFIGURATION ERROR]");
-    console.error("Error validating datasource 'db': the URL must start with 'postgresql://' or 'postgres://'");
-    console.error(`Received DATABASE_URL: ${rawDbUrl ? `"${rawDbUrl.substring(0, 16)}..."` : "UNDEFINED / EMPTY"}`);
-    console.error("\n👉 FIX ON RENDER DASHBOARD:");
-    console.error("1. Go to Render Dashboard -> Backend Service -> Environment");
-    console.error("2. Add/Edit DATABASE_URL with a valid PostgreSQL connection string:");
-    console.error("   postgresql://<USER>:<PASSWORD>@<HOST>:<PORT>/<DATABASE>?sslmode=require");
-    console.error("3. Save changes and trigger 'Clear build cache & deploy'.");
-    console.error("==================================================================\n");
-    process.exit(1);
-  }
+if (rawDbUrl && (rawDbUrl.startsWith("http://") || rawDbUrl.startsWith("https://"))) {
+  console.warn("\n==================================================================");
+  console.warn("⚠️ [DATABASE_URL CONFIGURATION WARNING]");
+  console.warn(`DATABASE_URL is currently set to a web URL: "${rawDbUrl.substring(0, 32)}..."`);
+  console.warn("PostgreSQL requires a connection string starting with 'postgresql://' or 'postgres://'");
+  console.warn("\n👉 TO FIX ON RENDER DASHBOARD:");
+  console.warn("1. Go to Render Dashboard -> Your Service -> Environment");
+  console.warn("2. Change DATABASE_URL to your PostgreSQL connection string:");
+  console.warn("   postgresql://<USER>:<PASSWORD>@<HOST>:<PORT>/<DATABASE>?sslmode=require");
+  console.warn("3. If you do not have a PostgreSQL database yet, you can create a free PostgreSQL");
+  console.warn("   instance on Render ('New +' -> 'PostgreSQL') and copy its 'Internal Database URL'.");
+  console.warn("==================================================================\n");
+  // Temporarily clear invalid HTTP URL so Prisma client does not crash the process
+  delete process.env.DATABASE_URL;
 }
 
 import remoteokRoutes from "./routes/remoteok.js";
@@ -76,7 +76,7 @@ app.use((req, res, next) => {
 });
 
 // =========================================================================
-// 2. CORS & CROSS-SUBDOMAIN COOKIE CONFIGURATION (Render.com)
+// 2. CORS & CROSS-ORIGIN COOKIE CONFIGURATION (Render.com)
 // =========================================================================
 const ALLOWED_ORIGINS = [
   "https://kundanvision369.onrender.com",
@@ -91,14 +91,15 @@ const ALLOWED_ORIGINS = [
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".onrender.com"))) {
+  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin === "https://kundanvision369.onrender.com" || origin.endsWith(".onrender.com"))) {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Credentials", "true");
   } else if (!origin) {
     // Same-origin, direct API, or webhook request
-    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Origin", "https://kundanvision369.onrender.com");
+    res.header("Access-Control-Allow-Credentials", "true");
   } else {
-    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Origin", "https://kundanvision369.onrender.com");
     res.header("Access-Control-Allow-Credentials", "true");
   }
 

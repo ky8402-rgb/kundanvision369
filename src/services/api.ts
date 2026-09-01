@@ -1802,6 +1802,7 @@ export async function changeUserPassword(payload: {
 export interface BackendBidItem {
   id: string;
   job_title: string;
+  title?: string;
   company?: string;
   client_name?: string;
   platform?: string;
@@ -1860,9 +1861,13 @@ export async function updateBidStatus(
 
 export interface BackendStats {
   total: number;
+  total_bids?: number;
   active: number;
+  active_bids?: number;
   won: number;
+  won_bids?: number;
   earned: number;
+  total_earned?: number;
   win_rate: number;
   package_counts?: Record<string, number>;
   total_leads?: number;
@@ -1872,7 +1877,7 @@ export interface BackendLeadItem {
   id?: string | number;
   job_title?: string;
   title?: string;
-  company: string;
+  company?: string;
   matched_package?: string;
   package?: string;
   similarity_score?: number;
@@ -1883,16 +1888,29 @@ export interface BackendLeadItem {
   source?: string;
   created_at?: string;
   found_at?: string;
+  date?: string;
 }
 
 /**
- * Direct query helper for backend performance stats
+ * Direct query helper for backend performance stats with resilient fallback and validation
  */
 export async function fetchBackendStats(): Promise<BackendStats | null> {
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}/api/bids/stats`);
+    const res = await fetch(apiUrl('/api/bids/stats'));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    return await res.json();
+    const data = await res.json();
+    if (!data || typeof data !== 'object') {
+      return null;
+    }
+    return {
+      total: Number(data.total ?? data.total_bids ?? 0),
+      active: Number(data.active ?? data.active_bids ?? 0),
+      won: Number(data.won ?? data.won_bids ?? 0),
+      earned: Number(data.earned ?? data.total_earned ?? 0),
+      win_rate: Number(data.win_rate ?? 0),
+      package_counts: data.package_counts || {},
+      total_leads: Number(data.total_leads ?? 0)
+    };
   } catch (err) {
     console.warn('[GigPilot Backend] Error fetching backend stats:', err);
     return null;
@@ -1900,14 +1918,20 @@ export async function fetchBackendStats(): Promise<BackendStats | null> {
 }
 
 /**
- * Direct query helper for backend placed bids
+ * Direct query helper for backend placed bids with robust array parsing
  */
 export async function fetchBackendBids(limit: number = 50): Promise<BackendBidItem[]> {
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}/api/bids?limit=${limit}`);
+    const res = await fetch(apiUrl(`/api/bids?limit=${limit}`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    return Array.isArray(data) ? data : (data.bids || []);
+    if (Array.isArray(data)) {
+      return data;
+    }
+    if (data && Array.isArray(data.bids)) {
+      return data.bids;
+    }
+    return [];
   } catch (err) {
     console.warn('[GigPilot Backend] Error fetching backend bids:', err);
     return [];
@@ -1915,20 +1939,21 @@ export async function fetchBackendBids(limit: number = 50): Promise<BackendBidIt
 }
 
 /**
- * Direct query helper for backend lead items
+ * Direct query helper for backend lead items from RemoteOK and multi-source pipelines
  */
 export async function fetchBackendLeads(limit: number = 20): Promise<BackendLeadItem[]> {
   try {
-    const res = await fetch(`${BACKEND_BASE_URL}/api/leads?limit=${limit}`);
+    const res = await fetch(apiUrl(`/api/leads?limit=${limit}`));
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    const leads = Array.isArray(data) ? data : (data.leads || []);
+    const leads = Array.isArray(data) ? data : (data?.leads || []);
     return leads.slice(0, limit);
   } catch (err) {
     console.warn('[GigPilot Backend] Error fetching backend leads:', err);
     return [];
   }
 }
+
 
 export interface WithdrawBidResult {
   success: boolean;
@@ -2168,6 +2193,7 @@ export async function generateAIProposalBackend(payload: AIProposalRequestPayloa
 
   throw new Error(lastError);
 }
+
 
 
 
