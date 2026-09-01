@@ -59,7 +59,7 @@ import {
 } from "./server/platformIntegrations.js";
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3000;
+const PORT = 3000;
 
 // HTTP Response Compression Middleware (Brotli / Gzip)
 app.use(compression({ level: 6 }));
@@ -544,7 +544,102 @@ app.post("/api/support/resolve", async (req, res) => {
   }
 });
 
-// Real-Time Progress Streaming for Auto-Resolution (Server-Sent Events)
+// Direct Action Execution Endpoint (Runs real operations with instant feedback & logs)
+app.post("/api/support/execute-fix", async (req, res) => {
+  try {
+    const { action } = req.body || {};
+    if (!action) {
+      return res.status(400).json({ success: false, error: "Action name is required" });
+    }
+    const result = await advancedResolutionEngine.executeFixWithDetails(action);
+    res.json({
+      success: true,
+      result
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Fix execution failed"
+    });
+  }
+});
+
+// Available Executable Auto-Healing Actions Registry
+app.get("/api/support/actions", async (req, res) => {
+  const actions = [
+    {
+      id: "clearCache",
+      name: "Flush Query Cache & Run Garbage Collection",
+      category: "Memory & Cache",
+      description: "Invalidates in-memory and Redis caches, forces V8 heap garbage collection, and reclaims memory.",
+      icon: "RefreshCw",
+      recommendedFor: ["High Memory Usage", "Stale Query Cache", "Slow App Load"]
+    },
+    {
+      id: "reconnectDB",
+      name: "Reconnect & Ping PostgreSQL Cluster",
+      category: "Database",
+      description: "Re-verifies connection pool, checks table schemas, and verifies user/work-order records.",
+      icon: "Database",
+      recommendedFor: ["Database Disconnection", "Connection Pool Latency", "SQL Timeout"]
+    },
+    {
+      id: "healWorkOrders",
+      name: "Heal & Reconcile Work Orders",
+      category: "Billing & Orders",
+      description: "Audits active work order statuses, verifies PayPal invoice linkage, and seeds baseline work orders.",
+      icon: "FileCheck",
+      recommendedFor: ["Stuck Work Orders", "Missing Invoices", "Status Out-of-Sync"]
+    },
+    {
+      id: "syncLiveFeeds",
+      name: "Resynchronize Live Remote Job Feeds",
+      category: "Scrapers & Feeds",
+      description: "Polls RemoteOK, WeWorkRemotely, and FlexJobs feeds and ingests fresh listings into PostgreSQL.",
+      icon: "Globe",
+      recommendedFor: ["Empty Job Radar", "Stale Job Postings", "Feed Scraper Backoff"]
+    },
+    {
+      id: "createSnapshot",
+      name: "Trigger PostgreSQL Snapshot & Checksum",
+      category: "Disaster Recovery",
+      description: "Dumps all database tables to timestamped snapshot and enforces strict 3-backup retention.",
+      icon: "Archive",
+      recommendedFor: ["Pre-Deployment Backup", "Data State Protection", "Disaster Recovery"]
+    },
+    {
+      id: "optimizeMemory",
+      name: "Stabilize Heap Memory Headroom",
+      category: "Memory & Cache",
+      description: "Scans heap for stale closures, releases buffer handles, and ensures memory headroom.",
+      icon: "Cpu",
+      recommendedFor: ["Memory Leak Warning", "Elevated RSS Footprint"]
+    },
+    {
+      id: "reseedData",
+      name: "Verify & Repair Primary User Account",
+      category: "User Credentials",
+      description: "Verifies ky8402@gmail.com account credentials, credits, and active subscription status.",
+      icon: "UserCheck",
+      recommendedFor: ["Missing User Credits", "Account Verification Notice"]
+    },
+    {
+      id: "runFullHeal",
+      name: "Run Full Multi-Layer Auto-Healing Suite",
+      category: "System Suite",
+      description: "Executes all remediation strategies in sequential priority order with post-health verification.",
+      icon: "Zap",
+      recommendedFor: ["Comprehensive System Tune-up", "Multi-System Warning"]
+    }
+  ];
+
+  res.json({
+    success: true,
+    actions
+  });
+});
+
+// Real-Time Progress Streaming for Auto-Resolution & Direct Action Execution (Server-Sent Events)
 app.post("/api/support/resolve-stream", async (req, res) => {
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -553,7 +648,7 @@ app.post("/api/support/resolve-stream", async (req, res) => {
     (res as any).flushHeaders();
   }
 
-  const { issue } = req.body || {};
+  const { issue, action } = req.body || {};
 
   const onProgress = (msg: string) => {
     try {
@@ -562,8 +657,14 @@ app.post("/api/support/resolve-stream", async (req, res) => {
   };
 
   try {
-    const resolution = await advancedResolutionEngine.resolveIssue(issue || "System health check", onProgress);
-    res.write(`data: ${JSON.stringify({ type: "done", resolution })}\n\n`);
+    if (action) {
+      onProgress(`⚡ Executing direct fix action: "${action}"...`);
+      const fixResult = await advancedResolutionEngine.executeFixWithDetails(action, onProgress);
+      res.write(`data: ${JSON.stringify({ type: "done", actionResult: fixResult })}\n\n`);
+    } else {
+      const resolution = await advancedResolutionEngine.resolveIssue(issue || "System health check", onProgress);
+      res.write(`data: ${JSON.stringify({ type: "done", resolution })}\n\n`);
+    }
   } catch (error: any) {
     res.write(`data: ${JSON.stringify({ type: "error", message: error.message || "Streaming resolution failed" })}\n\n`);
   } finally {
@@ -1214,14 +1315,7 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const possibleDistPaths = [
-      path.join(process.cwd(), 'dist'),
-      path.join(__dirname, 'dist'),
-      path.join(__dirname, '..', 'dist'),
-      __dirname
-    ];
-    
-    let distPath = possibleDistPaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || path.join(process.cwd(), 'dist');
+    const distPath = path.join(process.cwd(), 'dist');
 
     app.use(express.static(distPath, {
       maxAge: '1y',

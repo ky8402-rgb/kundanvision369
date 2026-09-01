@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { getPlatformStatus, PlatformConnectionStatus, fetchRemoteOKJobs, apiUrl } from '../services/api';
 import { exportStateAsBackup, generateBackupJson, BackupDataPayload } from '../utils/exportBackup';
 
-interface PlatformCredentialsModalProps {
+export interface PlatformCredentialsModalProps {
   isOpen: boolean;
   onClose: () => void;
   onOrderAdded: (order: any) => void;
@@ -19,7 +19,7 @@ interface PlatformCredentialsModalProps {
   };
 }
 
-export default function PlatformCredentialsModal({
+export function PlatformCredentialsModal({
   isOpen,
   onClose,
   onOrderAdded,
@@ -542,3 +542,4 @@ export default function PlatformCredentialsModal({
   );
 }
 
+export default PlatformCredentialsModal;

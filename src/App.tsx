@@ -3,13 +3,21 @@ import type { RemoteOKJobItem } from './components/RemoteOKJobsBoard';
 import { SEOHead } from './components/SEOHead';
 import { FreelanceJob, GeneratedProposal, ActiveContract, defaultProfile, defaultRules, defaultActiveContracts } from './types';
 
-// Code Splitting: Lazy-loaded Route Views, Dashboard, Invoicing, Analytics and Modal Components
-const WorkOrdersView = lazy(() => import('./components/views/WorkOrdersView').then(m => ({ default: m.WorkOrdersView })));
-const InvoicesView = lazy(() => import('./components/views/InvoicesView').then(m => ({ default: m.InvoicesView })));
-const AnalyticsView = lazy(() => import('./components/views/AnalyticsView').then(m => ({ default: m.AnalyticsView })));
-const DashboardEarningsChart = lazy(() => import('./components/views/DashboardEarningsChart').then(m => ({ default: m.DashboardEarningsChart })));
+// Core Dashboard & View Components (Direct imports for immediate reliability and zero-flicker rendering)
+import { WorkOrdersView } from './components/views/WorkOrdersView';
+import { InvoicesView } from './components/views/InvoicesView';
+import { AnalyticsView } from './components/views/AnalyticsView';
+import { DashboardEarningsChart } from './components/views/DashboardEarningsChart';
+import { PackageChart } from './components/PackageChart';
+import { BidsTable } from './components/BidsTable';
+import { LeadsTable } from './components/LeadsTable';
+import { WithdrawalSummary } from './components/WithdrawalSummary';
+import { SystemHealthConnectivityCard } from './components/SystemHealthConnectivityCard';
+import { FreelancerMetricsSection } from './components/FreelancerMetricsSection';
+import { SupportChat } from './components/SupportChat';
 
-const PlatformCredentialsModal = lazy(() => import('./components/PlatformCredentialsModal'));
+// Secondary Tabs & Modals (Safe Lazy Loading with explicit typed named exports)
+const PlatformCredentialsModal = lazy(() => import('./components/PlatformCredentialsModal').then(m => ({ default: m.PlatformCredentialsModal })));
 const RemoteOKJobsBoard = lazy(() => import('./components/RemoteOKJobsBoard').then(m => ({ default: m.RemoteOKJobsBoard })));
 const ProposalStudioModal = lazy(() => import('./components/ProposalStudioModal').then(m => ({ default: m.ProposalStudioModal })));
 const JobAnalysisModal = lazy(() => import('./components/JobAnalysisModal').then(m => ({ default: m.JobAnalysisModal })));
@@ -20,17 +28,10 @@ const LeadNotificationsHub = lazy(() => import('./components/LeadNotificationsHu
 const ActivityLogsView = lazy(() => import('./components/ActivityLogsView').then(m => ({ default: m.ActivityLogsView })));
 const DatabaseSnapshotManager = lazy(() => import('./components/DatabaseSnapshotManager').then(m => ({ default: m.DatabaseSnapshotManager })));
 const LegalComplianceModal = lazy(() => import('./components/LegalComplianceModal').then(m => ({ default: m.LegalComplianceModal })));
-const FreelancerMetricsSection = lazy(() => import('./components/FreelancerMetricsSection').then(m => ({ default: m.FreelancerMetricsSection })));
 const GSTInvoiceModal = lazy(() => import('./components/GSTInvoiceModal').then(m => ({ default: m.GSTInvoiceModal })));
 const PayPalConnectModal = lazy(() => import('./components/PayPalConnectModal').then(m => ({ default: m.PayPalConnectModal })));
-const PasswordResetModal = lazy(() => import('./components/PasswordResetModal'));
-const EmailVerificationModal = lazy(() => import('./components/EmailVerificationModal'));
-const PackageChart = lazy(() => import('./components/PackageChart').then(m => ({ default: m.PackageChart })));
-const BidsTable = lazy(() => import('./components/BidsTable').then(m => ({ default: m.BidsTable })));
-const LeadsTable = lazy(() => import('./components/LeadsTable').then(m => ({ default: m.LeadsTable })));
-const WithdrawalSummary = lazy(() => import('./components/WithdrawalSummary').then(m => ({ default: m.WithdrawalSummary })));
-const SystemHealthConnectivityCard = lazy(() => import('./components/SystemHealthConnectivityCard').then(m => ({ default: m.SystemHealthConnectivityCard })));
-const SupportChat = lazy(() => import('./components/SupportChat').then(m => ({ default: m.SupportChat })));
+const PasswordResetModal = lazy(() => import('./components/PasswordResetModal').then(m => ({ default: m.PasswordResetModal })));
+const EmailVerificationModal = lazy(() => import('./components/EmailVerificationModal').then(m => ({ default: m.EmailVerificationModal })));
 
 // Dynamic helper for celebratory confetti without bloating the main bundle
 const triggerConfetti = (opts: any) => {

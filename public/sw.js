@@ -33,8 +33,17 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Do not intercept non-GET requests or WebSocket connections
-  if (event.request.method !== 'GET' || url.protocol.startsWith('ws')) {
+  // Do not intercept non-GET requests, WebSocket connections, or dev server modules
+  if (
+    event.request.method !== 'GET' || 
+    url.protocol.startsWith('ws') ||
+    url.pathname.includes('/src/') ||
+    url.pathname.includes('/@vite/') ||
+    url.pathname.includes('/@fs/') ||
+    url.pathname.includes('/node_modules/') ||
+    url.pathname.endsWith('.tsx') ||
+    url.pathname.endsWith('.ts')
+  ) {
     return;
   }
 
