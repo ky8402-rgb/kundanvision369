@@ -313,16 +313,17 @@ export async function checkDatabaseConnection() {
   const start = Date.now();
   const dbUrl = (process.env.DATABASE_URL || '').trim();
   const isPostgres = dbUrl.startsWith('postgres');
+  const isNeon = dbUrl.includes('neon.tech') || dbUrl.includes('neondb');
   const isCloudSqlOrSupabase = dbUrl.includes('supabase') || dbUrl.includes('cloudsql') || dbUrl.includes('google') || dbUrl.includes('pooler');
 
   try {
     if (!isDatabaseConfigured) {
       return {
         connected: false,
-        type: 'PostgreSQL (Cloud SQL / Supabase Ready)',
+        type: 'PostgreSQL (Neon / Supabase Ready)',
         latencyMs: 0,
         provider: 'PostgreSQL',
-        message: 'DATABASE_URL not configured. Running in high-performance in-memory mode. Add PostgreSQL or Supabase credentials in Settings to sync cloud records.',
+        message: 'DATABASE_URL not configured. Running in high-performance in-memory mode. Add PostgreSQL or Neon credentials in Settings to sync cloud records.',
         stats: { users: 1, transactions: 0, workOrders: 0, paypalOrders: 0 }
       };
     }
@@ -340,10 +341,10 @@ export async function checkDatabaseConnection() {
 
     return {
       connected: true,
-      type: isCloudSqlOrSupabase ? 'Cloud SQL / Supabase PostgreSQL' : (isPostgres ? 'PostgreSQL Database' : 'Database'),
+      type: isNeon ? 'Neon Serverless PostgreSQL' : (isCloudSqlOrSupabase ? 'Cloud SQL / Supabase PostgreSQL' : (isPostgres ? 'PostgreSQL Database' : 'Database')),
       latencyMs,
-      provider: 'PostgreSQL',
-      message: 'PostgreSQL connection active and synchronized.',
+      provider: 'Neon PostgreSQL',
+      message: 'Neon PostgreSQL connection active and synchronized.',
       stats: {
         users: usersCount,
         transactions: txCount,
@@ -354,9 +355,9 @@ export async function checkDatabaseConnection() {
   } catch (err: any) {
     return {
       connected: false,
-      type: 'PostgreSQL (Cloud SQL / Supabase)',
+      type: isNeon ? 'Neon Serverless PostgreSQL' : 'PostgreSQL (Neon / Supabase)',
       latencyMs: Date.now() - start,
-      provider: 'PostgreSQL',
+      provider: 'Neon PostgreSQL',
       message: err.message || 'Connecting to database...',
       stats: { users: 1, transactions: 0, workOrders: 0, paypalOrders: 0 }
     };
