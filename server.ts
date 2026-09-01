@@ -279,6 +279,45 @@ app.get("/api/leads", async (req, res) => {
   }
 });
 
+// Real-Time Server-Sent Events (SSE) Stream for High-Priority Gigs & Webhook Triggers
+const sseClients = new Set<express.Response>();
+
+app.get("/api/leads/stream", (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders?.();
+
+  sseClients.add(res);
+
+  // Send initial connection handshake
+  res.write(`data: ${JSON.stringify({ status: "connected", timestamp: new Date().toISOString() })}\n\n`);
+
+  req.on("close", () => {
+    sseClients.delete(res);
+  });
+});
+
+// Incoming Webhook Receiver to broadcast new high-priority freelance gigs to all connected clients
+app.post("/api/webhooks/gig", express.json(), (req, res) => {
+  try {
+    const gigData = req.body;
+    const payload = JSON.stringify(gigData);
+
+    for (const client of sseClients) {
+      try {
+        client.write(`event: high_priority_gig\ndata: ${payload}\n\n`);
+      } catch {
+        sseClients.delete(client);
+      }
+    }
+
+    return res.json({ success: true, broadcastCount: sseClients.size, timestamp: new Date().toISOString() });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // Comprehensive Health & Connectivity Check Endpoint
 app.get("/api/health", async (req, res) => {
   const startTime = Date.now();

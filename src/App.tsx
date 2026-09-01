@@ -64,7 +64,9 @@ import {
   DatabaseStatus,
   BackendStats,
   BackendBidItem,
-  BackendLeadItem
+  BackendLeadItem,
+  gigWebhookDispatcher,
+  HighPriorityGigEvent
 } from './services/api';
 
 // Primary Payment Gateways Configuration
@@ -368,6 +370,44 @@ export default function App() {
       setToast(prev => ({ ...prev, show: false }));
     }, 3500);
   };
+
+  // Real-Time Webhook Handler: Subscribes to backend triggers and updates local React state
+  useEffect(() => {
+    // 1. Bind global toast notification trigger
+    gigWebhookDispatcher.setToastHandler(showToast);
+
+    // 2. Subscribe to high-priority gig webhook events to update work orders state
+    const unsubscribe = gigWebhookDispatcher.subscribe((gig: HighPriorityGigEvent) => {
+      setWorkOrders(prev => {
+        if (prev.some(o => String(o.id) === String(gig.id))) {
+          return prev;
+        }
+        const newOrder: WorkOrder = {
+          id: gig.id,
+          externalId: gig.id,
+          title: gig.title,
+          platform: gig.platform || 'RemoteOK',
+          status: 'urgent',
+          amount: gig.budget || 750,
+          category: 'High-Priority Gig Match',
+          time: 'Just now (Webhook)',
+          clientName: gig.company,
+          description: `🚨 High-Priority Lead (${gig.matchScore}% Match). AI Winning Angle: ${gig.aiWinningAngle || 'Immediate milestone delivery.'}`,
+          url: gig.url,
+          tags: ['Urgent', 'High-Match', gig.platform]
+        };
+        return [newOrder, ...prev];
+      });
+    });
+
+    // 3. Start real-time SSE stream with polling fallback
+    const stopStream = gigWebhookDispatcher.startRealtimeWebhookStream(showToast);
+
+    return () => {
+      unsubscribe();
+      stopStream();
+    };
+  }, []);
 
   // Helper: Number Formatter (Safe against undefined/null/NaN)
   const fmt = (n?: number | null | string) => {

@@ -2194,6 +2194,198 @@ export async function generateAIProposalBackend(payload: AIProposalRequestPayloa
   throw new Error(lastError);
 }
 
+/**
+ * =========================================================================
+ * REAL-TIME WEBHOOK & HIGH-PRIORITY GIG DISPATCHER
+ * =========================================================================
+ */
+
+export interface HighPriorityGigEvent {
+  id: string;
+  title: string;
+  company: string;
+  budget: number;
+  platform: string;
+  matchScore: number;
+  urgency?: 'high' | 'urgent' | 'immediate';
+  url?: string;
+  aiWinningAngle?: string;
+  timestamp?: string;
+}
+
+export type GigWebhookListener = (gig: HighPriorityGigEvent) => void;
+export type ToastNotificationTrigger = (message: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
+
+class GigWebhookDispatcher {
+  private listeners: Set<GigWebhookListener> = new Set();
+  private toastHandler: ToastNotificationTrigger | null = null;
+  private eventSource: EventSource | null = null;
+  private pollingTimer: any = null;
+  private knownGigIds: Set<string> = new Set();
+
+  /**
+   * Registers a global toast notification handler to alert user in the React UI
+   */
+  public setToastHandler(handler: ToastNotificationTrigger): void {
+    this.toastHandler = handler;
+  }
+
+  /**
+   * Subscribes a listener to real-time high priority gig events
+   */
+  public subscribe(listener: GigWebhookListener): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+
+  /**
+   * Dispatches an incoming webhook trigger, alerts user via Toast system, and notifies all subscribers
+   */
+  public handleIncomingWebhook(payload: Partial<HighPriorityGigEvent> & { event?: string; gig?: any; lead?: any; data?: any }): HighPriorityGigEvent {
+    const raw = payload.gig || payload.lead || payload.data || payload;
+    const gig: HighPriorityGigEvent = {
+      id: String(raw.id || `gig_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`),
+      title: raw.title || raw.job_title || raw.jobTitle || 'High-Value Remote Engineering Gig',
+      company: raw.company || raw.clientName || 'Verified Client',
+      budget: Number(raw.budget || raw.amount || raw.bid_amount || 750),
+      platform: raw.platform || raw.source || 'RemoteOK',
+      matchScore: Number(raw.matchScore || raw.similarity_score || 95),
+      urgency: raw.urgency || 'urgent',
+      url: raw.url || raw.sourceUrl || 'https://remoteok.com',
+      aiWinningAngle: raw.aiWinningAngle || raw.summary || 'Immediate MVP prototype with guaranteed 48-hour milestone delivery.',
+      timestamp: raw.timestamp || raw.created_at || new Date().toISOString()
+    };
+
+    if (this.knownGigIds.has(gig.id)) {
+      return gig;
+    }
+    this.knownGigIds.add(gig.id);
+
+    // Alert the user via toast notification system
+    if (this.toastHandler) {
+      const budgetDisplay = gig.budget > 0 ? `$${gig.budget.toLocaleString()} USD` : 'High Value';
+      this.toastHandler(
+        `🚨 High-Priority Gig Match! "${gig.title}" (${budgetDisplay}) on ${gig.platform} [${gig.matchScore}% Match]`,
+        'success'
+      );
+    }
+
+    // Broadcast to local React subscribers
+    this.listeners.forEach(cb => {
+      try {
+        cb(gig);
+      } catch (err) {
+        console.warn('[GigWebhookDispatcher] Error in subscriber callback:', err);
+      }
+    });
+
+    return gig;
+  }
+
+  /**
+   * Initializes Server-Sent Events (SSE) or resilient fallback stream with the backend
+   */
+  public startRealtimeWebhookStream(toastFn?: ToastNotificationTrigger): () => void {
+    if (toastFn) {
+      this.setToastHandler(toastFn);
+    }
+
+    const streamUrl = apiUrl('/api/leads/stream');
+    try {
+      if (typeof window !== 'undefined' && 'EventSource' in window) {
+        this.eventSource = new EventSource(streamUrl);
+
+        this.eventSource.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data && (data.title || data.job_title || data.gig)) {
+              this.handleIncomingWebhook(data);
+            }
+          } catch (e) {
+            console.warn('[GigWebhookDispatcher] SSE parse error:', e);
+          }
+        };
+
+        this.eventSource.addEventListener('high_priority_gig', (event: any) => {
+          try {
+            const data = JSON.parse(event.data);
+            this.handleIncomingWebhook(data);
+          } catch (e) {
+            console.warn('[GigWebhookDispatcher] SSE custom event error:', e);
+          }
+        });
+
+        this.eventSource.onerror = () => {
+          // Fallback gracefully to polling if SSE is disconnected
+          if (this.eventSource) {
+            this.eventSource.close();
+            this.eventSource = null;
+          }
+          this.startPollingFallback();
+        };
+      } else {
+        this.startPollingFallback();
+      }
+    } catch {
+      this.startPollingFallback();
+    }
+
+    return () => this.stop();
+  }
+
+  private startPollingFallback(): void {
+    if (this.pollingTimer) return;
+    this.pollingTimer = setInterval(async () => {
+      try {
+        const leads = await fetchBackendLeads(10);
+        if (Array.isArray(leads) && leads.length > 0) {
+          const topLead = leads[0];
+          if (topLead && !this.knownGigIds.has(String(topLead.id))) {
+            this.handleIncomingWebhook({
+              id: String(topLead.id),
+              title: topLead.job_title || 'New Verified Lead',
+              company: topLead.company || 'Verified Enterprise',
+              platform: topLead.source || 'RemoteOK',
+              budget: 650,
+              matchScore: Math.round((topLead.similarity_score || 0.95) * 100),
+              url: topLead.url
+            });
+          }
+        }
+      } catch {
+        // quiet polling fallback
+      }
+    }, 45000);
+  }
+
+  public stop(): void {
+    if (this.eventSource) {
+      this.eventSource.close();
+      this.eventSource = null;
+    }
+    if (this.pollingTimer) {
+      clearInterval(this.pollingTimer);
+      this.pollingTimer = null;
+    }
+  }
+}
+
+export const gigWebhookDispatcher = new GigWebhookDispatcher();
+
+/**
+ * Convenience hook/function for incoming webhook triggers
+ */
+export function handleIncomingGigWebhook(
+  payload: any,
+  toastNotifier?: ToastNotificationTrigger
+): HighPriorityGigEvent {
+  if (toastNotifier) {
+    gigWebhookDispatcher.setToastHandler(toastNotifier);
+  }
+  return gigWebhookDispatcher.handleIncomingWebhook(payload);
+}
+
+
 
 
 
