@@ -29,6 +29,7 @@ const BidsTable = lazy(() => import('./components/BidsTable').then(m => ({ defau
 const LeadsTable = lazy(() => import('./components/LeadsTable').then(m => ({ default: m.LeadsTable })));
 const WithdrawalSummary = lazy(() => import('./components/WithdrawalSummary').then(m => ({ default: m.WithdrawalSummary })));
 const SystemHealthConnectivityCard = lazy(() => import('./components/SystemHealthConnectivityCard').then(m => ({ default: m.SystemHealthConnectivityCard })));
+const SupportChat = lazy(() => import('./components/SupportChat').then(m => ({ default: m.SupportChat })));
 
 // Dynamic helper for celebratory confetti without bloating the main bundle
 const triggerConfetti = (opts: any) => {
@@ -2731,6 +2732,18 @@ export default function App() {
             setIsEmailVerified(true);
             showToast('✅ Email verified successfully! All platform limits unlocked.', 'success');
           }}
+        />
+      </Suspense>
+
+      {/* ===== AI SUPPORT & SELF-HEALING CHAT ASSISTANT ===== */}
+      <Suspense fallback={null}>
+        <SupportChat
+          appContext={{
+            userEmail,
+            backendStats,
+            activeOrdersCount: workOrders.length
+          }}
+          onToast={showToast}
         />
       </Suspense>
 

@@ -41,6 +41,7 @@ import { authMiddleware } from "./server/authMiddleware.js";
 import { prisma, checkDatabaseConnection, syncLiveJobsToPostgres } from "./server/db.js";
 import { getGeminiAI } from "./server/gemini.js";
 import { clearBidsCache } from "./server/redisCache.js";
+import { selfHealer, supportSystem } from "./server/selfHealing.js";
 import {
   getPlatformStatus,
   fetchLivePlatformJobs,
@@ -423,7 +424,8 @@ app.get("/api/health", async (req, res) => {
         allSystemsReady: true,
         activeServicesCount: [dbStatus.connected, sqliteExists, hasGemini, true, hasFreelancer].filter(Boolean).length,
         totalServicesCount: 5
-      }
+      },
+      selfHealing: await selfHealer.checkHealth()
     };
 
     return res.status(200).json(responsePayload);
@@ -434,6 +436,57 @@ app.get("/api/health", async (req, res) => {
       timestamp: new Date().toISOString(),
       error: err?.message || 'Failed to inspect system connectivity'
     });
+  }
+});
+
+// Self-Healing & AI Support System Endpoints
+app.post("/api/support/analyze", async (req, res) => {
+  try {
+    const { issue, errorLog, appContext } = req.body || {};
+    const result = await supportSystem.analyzeIssue(issue || "General health check", errorLog, appContext);
+
+    if (result.solution.autoFix) {
+      await supportSystem.applyAutoFix(result.solution);
+      result.solution.status = "Auto-fix applied successfully";
+    }
+
+    res.json({
+      success: true,
+      data: result,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to analyze support issue"
+    });
+  }
+});
+
+app.post("/api/support/autofix", async (req, res) => {
+  try {
+    const { solution } = req.body || {};
+    const actions = await supportSystem.applyAutoFix(solution || { steps: ["Run system diagnostics"], autoFix: true });
+    res.json({
+      success: true,
+      actions,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Auto-fix execution failed"
+    });
+  }
+});
+
+app.post("/api/error/report", (req, res) => {
+  try {
+    const { error, context } = req.body || {};
+    selfHealer.logError(error, context);
+    res.json({ logged: true, timestamp: new Date().toISOString() });
+  } catch (error: any) {
+    res.status(500).json({ logged: false, error: error.message });
   }
 });
 

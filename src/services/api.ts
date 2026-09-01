@@ -1892,66 +1892,162 @@ export interface BackendLeadItem {
 }
 
 /**
+ * =========================================================================
+ * CLIENT-SIDE API CACHING & IN-FLIGHT REQUEST MEMOIZATION LAYER
+ * =========================================================================
+ */
+
+interface CacheEntry<T> {
+  data: T;
+  timestamp: number;
+  ttlMs: number;
+}
+
+class ApiCacheManager {
+  private cache = new Map<string, CacheEntry<any>>();
+  private inflight = new Map<string, Promise<any>>();
+
+  public async getOrFetch<T>(
+    key: string,
+    fetcher: () => Promise<T>,
+    ttlMs: number = 5000,
+    forceRefresh: boolean = false
+  ): Promise<T> {
+    const now = Date.now();
+    const existing = this.cache.get(key);
+
+    if (!forceRefresh && existing && (now - existing.timestamp) < existing.ttlMs) {
+      return existing.data;
+    }
+
+    if (!forceRefresh && this.inflight.has(key)) {
+      return this.inflight.get(key)!;
+    }
+
+    const promise = fetcher()
+      .then((data) => {
+        this.cache.set(key, { data, timestamp: Date.now(), ttlMs });
+        this.inflight.delete(key);
+        return data;
+      })
+      .catch((err) => {
+        this.inflight.delete(key);
+        if (existing) {
+          console.warn(`[ApiCache] Using stale cache for key "${key}":`, err);
+          return existing.data;
+        }
+        throw err;
+      });
+
+    this.inflight.set(key, promise);
+    return promise;
+  }
+
+  public invalidate(prefix?: string): void {
+    if (!prefix || prefix === 'all') {
+      this.cache.clear();
+      return;
+    }
+    for (const key of Array.from(this.cache.keys())) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  public setDirect<T>(key: string, data: T, ttlMs: number = 5000): void {
+    this.cache.set(key, { data, timestamp: Date.now(), ttlMs });
+  }
+}
+
+export const apiCache = new ApiCacheManager();
+
+export function invalidateApiCache(target?: 'stats' | 'bids' | 'leads' | 'all'): void {
+  apiCache.invalidate(target);
+}
+
+/**
  * Direct query helper for backend performance stats with resilient fallback and validation
  */
-export async function fetchBackendStats(): Promise<BackendStats | null> {
-  try {
-    const res = await fetch(apiUrl('/api/bids/stats'));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (!data || typeof data !== 'object') {
-      return null;
-    }
-    return {
-      total: Number(data.total ?? data.total_bids ?? 0),
-      active: Number(data.active ?? data.active_bids ?? 0),
-      won: Number(data.won ?? data.won_bids ?? 0),
-      earned: Number(data.earned ?? data.total_earned ?? 0),
-      win_rate: Number(data.win_rate ?? 0),
-      package_counts: data.package_counts || {},
-      total_leads: Number(data.total_leads ?? 0)
-    };
-  } catch (err) {
-    console.warn('[GigPilot Backend] Error fetching backend stats:', err);
-    return null;
-  }
+export async function fetchBackendStats(forceRefresh: boolean = false): Promise<BackendStats | null> {
+  return apiCache.getOrFetch<BackendStats | null>(
+    'stats:overview',
+    async () => {
+      try {
+        const res = await fetch(apiUrl('/api/bids/stats'));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!data || typeof data !== 'object') {
+          return null;
+        }
+        return {
+          total: Number(data.total ?? data.total_bids ?? 0),
+          active: Number(data.active ?? data.active_bids ?? 0),
+          won: Number(data.won ?? data.won_bids ?? 0),
+          earned: Number(data.earned ?? data.total_earned ?? 0),
+          win_rate: Number(data.win_rate ?? 0),
+          package_counts: data.package_counts || {},
+          total_leads: Number(data.total_leads ?? 0)
+        };
+      } catch (err) {
+        console.warn('[GigPilot Backend] Error fetching backend stats:', err);
+        return null;
+      }
+    },
+    5000,
+    forceRefresh
+  );
 }
 
 /**
  * Direct query helper for backend placed bids with robust array parsing
  */
-export async function fetchBackendBids(limit: number = 50): Promise<BackendBidItem[]> {
-  try {
-    const res = await fetch(apiUrl(`/api/bids?limit=${limit}`));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (Array.isArray(data)) {
-      return data;
-    }
-    if (data && Array.isArray(data.bids)) {
-      return data.bids;
-    }
-    return [];
-  } catch (err) {
-    console.warn('[GigPilot Backend] Error fetching backend bids:', err);
-    return [];
-  }
+export async function fetchBackendBids(limit: number = 50, forceRefresh: boolean = false): Promise<BackendBidItem[]> {
+  return apiCache.getOrFetch<BackendBidItem[]>(
+    `bids:${limit}`,
+    async () => {
+      try {
+        const res = await fetch(apiUrl(`/api/bids?limit=${limit}`));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          return data;
+        }
+        if (data && Array.isArray(data.bids)) {
+          return data.bids;
+        }
+        return [];
+      } catch (err) {
+        console.warn('[GigPilot Backend] Error fetching backend bids:', err);
+        return [];
+      }
+    },
+    5000,
+    forceRefresh
+  );
 }
 
 /**
  * Direct query helper for backend lead items from RemoteOK and multi-source pipelines
  */
-export async function fetchBackendLeads(limit: number = 20): Promise<BackendLeadItem[]> {
-  try {
-    const res = await fetch(apiUrl(`/api/leads?limit=${limit}`));
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    const leads = Array.isArray(data) ? data : (data?.leads || []);
-    return leads.slice(0, limit);
-  } catch (err) {
-    console.warn('[GigPilot Backend] Error fetching backend leads:', err);
-    return [];
-  }
+export async function fetchBackendLeads(limit: number = 20, forceRefresh: boolean = false): Promise<BackendLeadItem[]> {
+  return apiCache.getOrFetch<BackendLeadItem[]>(
+    `leads:${limit}`,
+    async () => {
+      try {
+        const res = await fetch(apiUrl(`/api/leads?limit=${limit}`));
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        const leads = Array.isArray(data) ? data : (data?.leads || []);
+        return leads.slice(0, limit);
+      } catch (err) {
+        console.warn('[GigPilot Backend] Error fetching backend leads:', err);
+        return [];
+      }
+    },
+    6000,
+    forceRefresh
+  );
 }
 
 

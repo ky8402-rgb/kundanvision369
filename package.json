@@ -13,6 +13,7 @@
     "worker": "node dist/worker.cjs",
     "worker:dev": "tsx server/worker.ts",
     "clean": "rm -rf dist server.js",
+    "health": "node healthcheck.js",
     "lint": "tsc --noEmit",
     "test": "tsc --noEmit"
   },
