@@ -27,12 +27,25 @@ export const authMiddleware = async (req: AuthenticatedRequest, res: Response, n
     const authHeader = req.headers.authorization;
     let decodedToken: any = null;
 
+    // 1. Check Authorization Bearer Header
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
       try {
         decodedToken = jwt.verify(token, JWT_SECRET);
       } catch (err: any) {
-        console.warn('[JWT Auth] Invalid or expired token:', err.message);
+        console.warn('[JWT Auth] Invalid or expired bearer token:', err.message);
+      }
+    }
+
+    // 2. Check HTTP-Only Cookie ('token' or 'auth_token') if Bearer was not provided or failed
+    if (!decodedToken && (req as any).cookies) {
+      const cookieToken = (req as any).cookies.token || (req as any).cookies.auth_token;
+      if (cookieToken) {
+        try {
+          decodedToken = jwt.verify(cookieToken, JWT_SECRET);
+        } catch (err: any) {
+          console.warn('[JWT Auth] Invalid or expired cookie token:', err.message);
+        }
       }
     }
 

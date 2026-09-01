@@ -3,7 +3,7 @@ import { FreelanceJob, FreelancerProfile, GeneratedProposal } from '../types';
 /**
  * Render Backend Base URL for GigPilot Autonomous Autopilot & Payment Gateway
  */
-export const BACKEND_BASE_URL = 'https://gigpilot-backend.onrender.com';
+export const BACKEND_BASE_URL = 'https://gigpilot-backend-g4j0.onrender.com';
 
 /**
  * Helper to dynamically resolve API base URL for Render or same-origin deployment
@@ -23,6 +23,27 @@ export function apiUrl(endpoint: string): string {
   const base = getApiBaseUrl();
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
   return `${base}${cleanEndpoint}`;
+}
+
+/**
+ * Standard fetch wrapper that always includes credentials and headers
+ */
+export async function secureFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('gigpilot_token') : null;
+  const headers = new Headers(options.headers || {});
+  
+  if (token && !headers.has('Authorization')) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+  if (!headers.has('Content-Type') && !(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  return fetch(url, {
+    ...options,
+    headers,
+    credentials: 'include', // Essential for cross-site cookies on *.onrender.com
+  });
 }
 
 export const INDIAN_STATES: Record<string, string> = {

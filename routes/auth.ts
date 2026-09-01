@@ -92,6 +92,15 @@ router.post('/register', async (req: Request, res: Response) => {
       { expiresIn: '30d' }
     );
 
+    // Cross-site cookie for Render subdomains (*.onrender.com)
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      path: '/'
+    });
+
     res.json({
       success: true,
       token,
@@ -163,6 +172,15 @@ router.post('/login', async (req: Request, res: Response) => {
       { expiresIn: '30d' }
     );
 
+    // Cross-site cookie for Render subdomains (*.onrender.com)
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'none',
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      path: '/'
+    });
+
     res.json({
       success: true,
       token,
@@ -177,6 +195,20 @@ router.post('/login', async (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
   }
+});
+
+/**
+ * POST /api/auth/logout
+ * Clears authentication cookie
+ */
+router.post('/logout', (_req: Request, res: Response) => {
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'none',
+    path: '/'
+  });
+  res.json({ success: true, message: 'Logged out successfully' });
 });
 
 /**

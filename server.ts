@@ -1,9 +1,32 @@
 import express from "express";
+import cookieParser from "cookie-parser";
 import path from "path";
 import fs from "fs";
 import cron from "node-cron";
 import rateLimit from "express-rate-limit";
 import { createServer as createViteServer } from "vite";
+
+// =========================================================================
+// 1. CRITICAL DATABASE_URL VALIDATION (Prisma & PostgreSQL)
+// =========================================================================
+const rawDbUrl = process.env.DATABASE_URL?.trim();
+
+if (process.env.NODE_ENV === "production" || process.env.RENDER) {
+  if (!rawDbUrl || (!rawDbUrl.startsWith("postgresql://") && !rawDbUrl.startsWith("postgres://"))) {
+    console.error("\n==================================================================");
+    console.error("❌ [FATAL DATABASE CONFIGURATION ERROR]");
+    console.error("Error validating datasource 'db': the URL must start with 'postgresql://' or 'postgres://'");
+    console.error(`Received DATABASE_URL: ${rawDbUrl ? `"${rawDbUrl.substring(0, 16)}..."` : "UNDEFINED / EMPTY"}`);
+    console.error("\n👉 FIX ON RENDER DASHBOARD:");
+    console.error("1. Go to Render Dashboard -> Backend Service -> Environment");
+    console.error("2. Add/Edit DATABASE_URL with a valid PostgreSQL connection string:");
+    console.error("   postgresql://<USER>:<PASSWORD>@<HOST>:<PORT>/<DATABASE>?sslmode=require");
+    console.error("3. Save changes and trigger 'Clear build cache & deploy'.");
+    console.error("==================================================================\n");
+    process.exit(1);
+  }
+}
+
 import remoteokRoutes from "./routes/remoteok.js";
 import paypalRoutes from "./routes/paypal.js";
 import leadsRoutes from "./routes/leads.js";
@@ -52,6 +75,56 @@ app.use((req, res, next) => {
   next();
 });
 
+// =========================================================================
+// 2. CORS & CROSS-SUBDOMAIN COOKIE CONFIGURATION (Render.com)
+// =========================================================================
+const ALLOWED_ORIGINS = [
+  "https://kundanvision369.onrender.com",
+  "https://gigpilot-backend-g4j0.onrender.com",
+  process.env.FRONTEND_URL?.replace(/\/$/, ""),
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "http://127.0.0.1:3000",
+  "http://127.0.0.1:5173",
+].filter(Boolean) as string[];
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+
+  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin.endsWith(".onrender.com"))) {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+  } else if (!origin) {
+    // Same-origin, direct API, or webhook request
+    res.header("Access-Control-Allow-Origin", "*");
+  } else {
+    res.header("Access-Control-Allow-Origin", origin);
+    res.header("Access-Control-Allow-Credentials", "true");
+  }
+
+  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Origin, X-Requested-With, Content-Type, Accept, Authorization, Cookie, Set-Cookie, paypal-transmission-sig, x-webhook-signature, x-paypal-webhook-id, x-user-email, x-user-id"
+  );
+  res.header("Access-Control-Expose-Headers", "X-Response-Time, Set-Cookie");
+
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+  next();
+});
+
+// Parse cookies & raw body for webhooks
+app.use(cookieParser());
+app.use(
+  express.json({
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
+
 // Rate Limiters for critical endpoints
 const withdrawRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -74,26 +147,6 @@ const aiProposalRateLimiter = rateLimit({
     error: "AI proposal generation rate limit reached. Please wait a moment before generating more proposals.",
   },
 });
-
-// CORS & Preflight middleware
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS, PATCH");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization, paypal-transmission-sig, x-webhook-signature, x-paypal-webhook-id");
-  res.header("Access-Control-Expose-Headers", "X-Response-Time");
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(200);
-  }
-  next();
-});
-
-app.use(
-  express.json({
-    verify: (req: any, _res, buf) => {
-      req.rawBody = buf;
-    },
-  })
-);
 
 // -------------------- API ROUTES --------------------
 
