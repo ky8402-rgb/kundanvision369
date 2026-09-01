@@ -395,5 +395,184 @@ Provide a concise, highly actionable root cause analysis (1-2 sentences) and 3 b
   }
 }
 
+export class PredictiveHealer {
+  private errorRateHistory: number[] = [];
+  private threshold = 0.3; // 30% error velocity triggers pre-emptive healing
+  private isRecovering = false;
+  private recoveryHistory: Array<{ timestamp: string; reason: string; actions: string[] }> = [];
+
+  constructor(private selfHealer: SelfHealingSystem) {}
+
+  public trackError(context?: string) {
+    const now = Date.now();
+    this.errorRateHistory.push(now);
+    // Keep sliding window of last 5 minutes (300,000ms)
+    this.errorRateHistory = this.errorRateHistory.filter(t => now - t < 300000);
+
+    const errorVelocityPerSec = this.errorRateHistory.length / 300; // errors per second
+
+    if (errorVelocityPerSec > this.threshold && !this.isRecovering) {
+      console.warn(`⚠️ [PredictiveHealer] High error velocity detected (${errorVelocityPerSec.toFixed(2)} err/s). Triggering proactive self-healing recovery...`);
+      this.proactiveHeal(context || 'Error velocity spike');
+    }
+  }
+
+  public getVelocityStats() {
+    const now = Date.now();
+    const recent = this.errorRateHistory.filter(t => now - t < 300000);
+    return {
+      errorsInWindow: recent.length,
+      windowSeconds: 300,
+      velocityPerSec: Number((recent.length / 300).toFixed(3)),
+      thresholdPerSec: this.threshold,
+      healthIndex: Math.max(0, 100 - (recent.length * 5)),
+      recentRecoveries: this.recoveryHistory.slice(-5)
+    };
+  }
+
+  public async proactiveHeal(reason: string) {
+    this.isRecovering = true;
+    try {
+      console.log('🔧 [PredictiveHealer] Executing preemptive memory purge, cache reset & pool reconciliation...');
+      const actions = await this.selfHealer.healSystem([
+        {
+          type: 'HIGH_MEMORY_USAGE',
+          severity: 'high',
+          message: `Predictive spike: ${reason}`,
+          timestamp: new Date().toISOString()
+        },
+        {
+          type: 'DATABASE_CHECK_FAILED',
+          severity: 'medium',
+          message: 'Pre-emptive pool reset',
+          timestamp: new Date().toISOString()
+        }
+      ]);
+
+      this.recoveryHistory.push({
+        timestamp: new Date().toISOString(),
+        reason,
+        actions
+      });
+    } catch (err) {
+      console.error('❌ [PredictiveHealer] Recovery execution error:', err);
+    } finally {
+      setTimeout(() => {
+        this.isRecovering = false;
+      }, 10000);
+    }
+  }
+}
+
+/**
+ * =========================================================================
+ * PERFORMANCE METRICS REGISTRY (Prometheus / OpenMetrics Compliant)
+ * =========================================================================
+ */
+export class PerformanceMetricsRegistry {
+  private requestCount = 0;
+  private errorCount = 0;
+  private statusCodes: Record<string, number> = {};
+  private durations: number[] = [];
+  private routeDurations: Record<string, { count: number; totalMs: number }> = {};
+  private startTime = Date.now();
+
+  public recordRequest(method: string, route: string, statusCode: number, durationMs: number) {
+    this.requestCount++;
+    if (statusCode >= 400) {
+      this.errorCount++;
+    }
+
+    const statusGroup = `${Math.floor(statusCode / 100)}xx`;
+    this.statusCodes[statusGroup] = (this.statusCodes[statusGroup] || 0) + 1;
+    this.statusCodes[String(statusCode)] = (this.statusCodes[String(statusCode)] || 0) + 1;
+
+    // Track rolling latency (keep latest 500 samples)
+    this.durations.push(durationMs);
+    if (this.durations.length > 500) {
+      this.durations.shift();
+    }
+
+    const key = `${method} ${route}`;
+    if (!this.routeDurations[key]) {
+      this.routeDurations[key] = { count: 0, totalMs: 0 };
+    }
+    this.routeDurations[key].count++;
+    this.routeDurations[key].totalMs += durationMs;
+  }
+
+  public getSummary() {
+    const memory = process.memoryUsage();
+    const sorted = [...this.durations].sort((a, b) => a - b);
+    const p50 = sorted[Math.floor(sorted.length * 0.5)] || 0;
+    const p95 = sorted[Math.floor(sorted.length * 0.95)] || 0;
+    const p99 = sorted[Math.floor(sorted.length * 0.99)] || 0;
+    const avg = this.durations.length > 0
+      ? this.durations.reduce((a, b) => a + b, 0) / this.durations.length
+      : 0;
+
+    return {
+      uptimeSeconds: Math.round((Date.now() - this.startTime) / 1000),
+      totalRequests: this.requestCount,
+      totalErrors: this.errorCount,
+      errorRate: this.requestCount > 0 ? Number(((this.errorCount / this.requestCount) * 100).toFixed(2)) : 0,
+      latency: {
+        avgMs: Number(avg.toFixed(2)),
+        p50Ms: Number(p50.toFixed(2)),
+        p95Ms: Number(p95.toFixed(2)),
+        p99Ms: Number(p99.toFixed(2))
+      },
+      statusCodes: this.statusCodes,
+      memory: {
+        rssMB: Math.round(memory.rss / 1024 / 1024),
+        heapUsedMB: Math.round(memory.heapUsed / 1024 / 1024),
+        heapTotalMB: Math.round(memory.heapTotal / 1024 / 1024)
+      }
+    };
+  }
+
+  public toPrometheusText(): string {
+    const summary = this.getSummary();
+    const lines: string[] = [
+      `# HELP http_requests_total Total number of HTTP requests made`,
+      `# TYPE http_requests_total counter`,
+      `http_requests_total ${summary.totalRequests}`,
+      ``,
+      `# HELP http_errors_total Total number of HTTP requests resulting in 4xx/5xx`,
+      `# TYPE http_errors_total counter`,
+      `http_errors_total ${summary.totalErrors}`,
+      ``,
+      `# HELP http_request_duration_ms Average duration of HTTP requests in milliseconds`,
+      `# TYPE http_request_duration_ms gauge`,
+      `http_request_duration_ms{quantile="0.5"} ${summary.latency.p50Ms}`,
+      `http_request_duration_ms{quantile="0.95"} ${summary.latency.p95Ms}`,
+      `http_request_duration_ms{quantile="0.99"} ${summary.latency.p99Ms}`,
+      `http_request_duration_ms{quantile="avg"} ${summary.latency.avgMs}`,
+      ``,
+      `# HELP nodejs_heap_used_bytes Process heap memory used in bytes`,
+      `# TYPE nodejs_heap_used_bytes gauge`,
+      `nodejs_heap_used_bytes ${process.memoryUsage().heapUsed}`,
+      ``,
+      `# HELP nodejs_heap_total_bytes Process heap memory total in bytes`,
+      `# TYPE nodejs_heap_total_bytes gauge`,
+      `nodejs_heap_total_bytes ${process.memoryUsage().heapTotal}`,
+      ``,
+      `# HELP process_uptime_seconds Process uptime in seconds`,
+      `# TYPE process_uptime_seconds gauge`,
+      `process_uptime_seconds ${summary.uptimeSeconds}`
+    ];
+
+    for (const [code, count] of Object.entries(this.statusCodes)) {
+      if (code.endsWith('xx')) {
+        lines.push(`http_response_status_group_total{status="${code}"} ${count}`);
+      }
+    }
+
+    return lines.join('\n') + '\n';
+  }
+}
+
 export const selfHealer = new SelfHealingSystem();
+export const predictiveHealer = new PredictiveHealer(selfHealer);
+export const metricsRegistry = new PerformanceMetricsRegistry();
 export const supportSystem = new AISupportSystem(selfHealer);

@@ -27,6 +27,7 @@ if (rawDbUrl && (rawDbUrl.startsWith("http://") || rawDbUrl.startsWith("https://
   delete process.env.DATABASE_URL;
 }
 
+import compression from "compression";
 import remoteokRoutes from "./routes/remoteok.js";
 import paypalRoutes from "./routes/paypal.js";
 import leadsRoutes from "./routes/leads.js";
@@ -40,8 +41,13 @@ import { checkCredits } from "./server/checkCredits.js";
 import { authMiddleware } from "./server/authMiddleware.js";
 import { prisma, checkDatabaseConnection, syncLiveJobsToPostgres } from "./server/db.js";
 import { getGeminiAI } from "./server/gemini.js";
-import { clearBidsCache } from "./server/redisCache.js";
-import { selfHealer, supportSystem } from "./server/selfHealing.js";
+import { clearBidsCache, apiCacheMiddleware, getCacheStats } from "./server/redisCache.js";
+import { selfHealer, supportSystem, metricsRegistry, predictiveHealer } from "./server/selfHealing.js";
+import {
+  proposalGenerationQueue,
+  reportProcessingQueue,
+  emailNotificationQueue
+} from "./server/asyncQueue.js";
 import {
   getPlatformStatus,
   fetchLivePlatformJobs,
@@ -53,7 +59,10 @@ import {
 const app = express();
 const PORT = Number(process.env.PORT) || 3000;
 
-// Performance Middleware: track response latency and inject X-Response-Time header
+// HTTP Response Compression Middleware (Brotli / Gzip)
+app.use(compression({ level: 6 }));
+
+// Performance & Prometheus Metrics Middleware: track response latency and error velocity
 app.use((req, res, next) => {
   const startHr = process.hrtime.bigint();
 
@@ -68,6 +77,16 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const endHr = process.hrtime.bigint();
     const durationMs = Number(endHr - startHr) / 1_000_000;
+
+    // Record metrics in Prometheus registry
+    const routePattern = (req.baseUrl || '') + (req.route?.path || req.path);
+    metricsRegistry.recordRequest(req.method, routePattern, res.statusCode, durationMs);
+
+    // If server error occurred, record in predictive error tracker
+    if (res.statusCode >= 500) {
+      predictiveHealer.trackError(`${req.method} ${req.originalUrl || req.path} -> ${res.statusCode}`);
+    }
+
     if (durationMs > 500 && req.path.startsWith("/api")) {
       console.warn(`⚠️ [SLOW_REQUEST] ${req.method} ${req.originalUrl || req.path} took ${durationMs.toFixed(1)}ms (Status: ${res.statusCode})`);
     }
@@ -253,8 +272,8 @@ app.use("/api/freelancer", freelancerBidsRoutes);
 // Compatibility aliases for /api/bids, /api/bids/stats, and /api/leads list
 app.use("/api/bids", freelancerBidsRoutes);
 
-// Public /api/leads listing endpoint for dashboard leads table
-app.get("/api/leads", async (req, res) => {
+// Public /api/leads listing endpoint for dashboard leads table with 60s Redis/memory caching
+app.get("/api/leads", apiCacheMiddleware(60), async (req, res) => {
   try {
     const limit = Math.min(Number(req.query.limit) || 20, 100);
     const { jobs } = await fetchLivePlatformJobs("");
@@ -494,6 +513,92 @@ app.post("/api/error/report", (req, res) => {
 app.get("/api/db/status", async (req, res) => {
   const status = await checkDatabaseConnection();
   res.json(status);
+});
+
+// Prometheus & OpenMetrics Metrics Endpoint
+app.get("/metrics", (req, res) => {
+  res.setHeader("Content-Type", "text/plain; version=0.0.4");
+  res.send(metricsRegistry.toPrometheusText());
+});
+
+// JSON Application Performance & Cache Metrics Endpoint
+app.get("/api/metrics", (req, res) => {
+  const metrics = metricsRegistry.getSummary();
+  const cacheStats = getCacheStats();
+  const predictiveStats = predictiveHealer.getVelocityStats();
+
+  res.json({
+    success: true,
+    timestamp: new Date().toISOString(),
+    metrics,
+    cache: cacheStats,
+    predictiveHealing: predictiveStats,
+    queues: {
+      proposalQueue: proposalGenerationQueue.getStats(),
+      reportQueue: reportProcessingQueue.getStats(),
+      emailQueue: emailNotificationQueue.getStats()
+    }
+  });
+});
+
+// Predictive Error Velocity & Proactive Self-Healing Telemetry
+app.get("/api/healing/predictive", (req, res) => {
+  res.json({
+    success: true,
+    data: predictiveHealer.getVelocityStats(),
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Asynchronous Background Queue Status & Job Dispatchers
+app.get("/api/jobs/stats", (req, res) => {
+  res.json({
+    proposalGeneration: proposalGenerationQueue.getStats(),
+    reportProcessing: reportProcessingQueue.getStats(),
+    emailNotifications: emailNotificationQueue.getStats()
+  });
+});
+
+app.post("/api/jobs/report", async (req, res) => {
+  try {
+    const { reportType, userEmail } = req.body || {};
+    const job = await reportProcessingQueue.add('generate-summary-report', {
+      reportType: reportType || 'performance_audit',
+      userEmail: userEmail || 'ky8402@gmail.com',
+      requestedAt: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Report generation queued for asynchronous background processing',
+      jobId: job.id,
+      status: job.status
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// Initialize background job queue processors
+reportProcessingQueue.process(async (job) => {
+  console.log(`🧵 [ReportQueue] Processing heavy report job #${job.id} for ${job.data.userEmail}...`);
+  // Simulate asynchronous report calculation
+  await new Promise(r => setTimeout(r, 1500));
+  return {
+    reportId: `rep_${Date.now()}`,
+    type: job.data.reportType,
+    generatedAt: new Date().toISOString(),
+    status: 'ready'
+  };
+});
+
+proposalGenerationQueue.process(async (job) => {
+  console.log(`🧵 [ProposalQueue] Processing background proposal generation #${job.id}...`);
+  await new Promise(r => setTimeout(r, 1000));
+  return {
+    proposalId: `prop_${Date.now()}`,
+    status: 'drafted'
+  };
 });
 
 // Recent matched jobs for ticker and public widgets
@@ -931,11 +1036,16 @@ async function startServer() {
     let distPath = possibleDistPaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || path.join(process.cwd(), 'dist');
 
     app.use(express.static(distPath, {
-      maxAge: '1d',
+      maxAge: '1y',
+      immutable: true,
       index: false,
       setHeaders: (res, filePath) => {
         if (filePath.endsWith('.html')) {
-          res.setHeader('Cache-Control', 'no-cache');
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        } else if (filePath.includes('/assets/') || filePath.endsWith('.js') || filePath.endsWith('.css') || filePath.endsWith('.svg') || filePath.endsWith('.png') || filePath.endsWith('.woff2')) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          res.setHeader('Cache-Control', 'public, max-age=86400');
         }
       }
     }));

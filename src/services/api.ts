@@ -26,9 +26,10 @@ export function apiUrl(endpoint: string): string {
 }
 
 /**
- * Standard fetch wrapper that always includes credentials and headers
+ * Standard fetch wrapper that always includes credentials and headers,
+ * with smart exponential backoff retry for transient network and 5xx errors.
  */
-export async function secureFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export async function secureFetch(url: string, options: RequestInit = {}, maxRetries = 2): Promise<Response> {
   const token = typeof localStorage !== 'undefined' ? localStorage.getItem('gigpilot_token') : null;
   const headers = new Headers(options.headers || {});
   
@@ -39,11 +40,36 @@ export async function secureFetch(url: string, options: RequestInit = {}): Promi
     headers.set('Content-Type', 'application/json');
   }
 
-  return fetch(url, {
-    ...options,
-    headers,
-    credentials: 'include', // Essential for cross-site cookies on *.onrender.com
-  });
+  let attempt = 0;
+  while (true) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+        credentials: 'include', // Essential for cross-site cookies on *.onrender.com
+      });
+
+      // If server returned 502/503/504 or rate-limited 429 and we have retries left, backoff
+      if ((response.status === 502 || response.status === 503 || response.status === 504 || response.status === 429) && attempt < maxRetries && (!options.method || options.method === 'GET')) {
+        attempt++;
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 200, 4000);
+        console.warn(`[secureFetch] Retrying ${url} (attempt ${attempt}/${maxRetries}) in ${backoffMs.toFixed(0)}ms due to HTTP ${response.status}`);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+
+      return response;
+    } catch (err: any) {
+      if (attempt < maxRetries && (!options.method || options.method === 'GET')) {
+        attempt++;
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt) + Math.random() * 200, 4000);
+        console.warn(`[secureFetch] Network error, retrying ${url} (attempt ${attempt}/${maxRetries}) in ${backoffMs.toFixed(0)}ms:`, err.message);
+        await new Promise((resolve) => setTimeout(resolve, backoffMs));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 export const INDIAN_STATES: Record<string, string> = {

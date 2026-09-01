@@ -170,5 +170,62 @@ export async function clearBidsCache(): Promise<void> {
   await invalidateCache('dashboard:*');
   await invalidateCache('api:bids');
   await invalidateCache('api:freelancer:bids');
+  await invalidateCache('cache:*');
+}
+
+let cacheHits = 0;
+let cacheMisses = 0;
+
+export function getCacheStats() {
+  const total = cacheHits + cacheMisses;
+  const hitRate = total > 0 ? (cacheHits / total) * 100 : 0;
+  return {
+    isRedisAvailable,
+    memoryKeysCount: memoryStore.size,
+    hits: cacheHits,
+    misses: cacheMisses,
+    hitRate: Number(hitRate.toFixed(1))
+  };
+}
+
+/**
+ * Express Middleware for Caching API responses with Redis / In-Memory TTL
+ * Automatically intercepts res.json to store the response payload
+ */
+export function apiCacheMiddleware(ttlSeconds: number = 300) {
+  return async (req: any, res: any, next: any) => {
+    // Only cache GET requests
+    if (req.method !== 'GET') {
+      return next();
+    }
+
+    const key = `cache:${req.originalUrl || req.url}`;
+    try {
+      const cached = await getCache(key);
+      if (cached) {
+        cacheHits++;
+        res.setHeader('X-Cache-Status', 'HIT');
+        res.setHeader('X-Cache-Engine', isRedisAvailable ? 'Redis' : 'Memory-TTL');
+        return res.json(cached);
+      }
+    } catch {
+      // Continue to handler on cache lookup failure
+    }
+
+    cacheMisses++;
+    res.setHeader('X-Cache-Status', 'MISS');
+
+    // Intercept res.json
+    const originalJson = res.json.bind(res);
+    res.json = (body: any) => {
+      // Only cache successful JSON payloads
+      if (res.statusCode >= 200 && res.statusCode < 300 && body) {
+        setCache(key, body, ttlSeconds).catch(() => {});
+      }
+      return originalJson(body);
+    };
+
+    next();
+  };
 }
 
