@@ -1,16 +1,6 @@
----
-title: GigPilot Autonomous Freelance Engine
-emoji: 🚀
-colorFrom: indigo
-colorTo: purple
-sdk: docker
-app_port: 7860
-pinned: false
----
-
 # 🚀 GigPilot - Autonomous AI Freelance Engine
 
-Production-ready Full-Stack application (React + Express + Node.js) with Docker deployment support for Hugging Face Spaces, autonomous freelance project scraping, AI proposal generation with Google Gemini, and real-time dashboard telemetry.
+Production-ready Full-Stack application (React + Express + Node.js) with Render deployment support, autonomous freelance project scraping, AI proposal generation with Google Gemini, and real-time dashboard telemetry.
 
 ---
 
@@ -38,20 +28,10 @@ Production-ready Full-Stack application (React + Express + Node.js) with Docker 
 
 ---
 
-## 🐳 Hugging Face Spaces Deployment (Docker)
+## 🚀 Deployment (Render.com)
 
-This repository includes a native multi-stage `Dockerfile` configured specifically for Hugging Face Spaces (running as non-root UID 1000 and listening on port `7860`).
-
-### Space Configuration Settings:
-- **SDK**: `Docker`
-- **Port**: `7860` (configured automatically via `app_port: 7860`)
-- **Environment Secrets** (Set in Space *Settings* -> *Variables and secrets*):
-  - `GEMINI_API_KEY`: Your Google Gemini API Key
-  - `DATABASE_URL`: PostgreSQL connection string (e.g. Neon, Supabase, or Render PostgreSQL)
-  - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token (Optional)
-  - `TELEGRAM_CHAT_ID`: Your Telegram chat ID (Optional)
-  - `DASHBOARD_USERNAME`: `admin`
-  - `DASHBOARD_PASSWORD`: Your chosen admin password
+- **Frontend / Full-stack service**: `https://kundanvision369.onrender.com`
+- **Backend API service**: `https://gigpilot-backend-g4j0.onrender.com`
 
 ---
 

@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - Test & Deploy to Hugging Face Spaces
+name: CI/CD Pipeline - Test & Build
 
 on:
   push:
@@ -14,9 +14,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # ------------------------------------------------------------
-  # 1. Test and Build Job
-  # ------------------------------------------------------------
   test-and-build:
     name: Install, Lint & Build
     runs-on: ubuntu-latest
@@ -47,41 +44,3 @@ jobs:
 
       - name: Run Production Build
         run: npm run build
-
-  # ------------------------------------------------------------
-  # 2. Automated Sync & Deploy to Hugging Face Space (Docker)
-  # ------------------------------------------------------------
-  deploy-to-huggingface:
-    name: Deploy to Hugging Face Spaces
-    needs: test-and-build
-    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          lfs: true
-
-      - name: Push to Hugging Face Spaces Git Repository
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_SPACE_REPO: ${{ secrets.HF_SPACE_REPO }} # e.g. "username/space-name" or "kundanvision369/gigpilot"
-        run: |
-          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE_REPO" ]; then
-            echo "⚠️ [Hugging Face Deploy]: HF_TOKEN or HF_SPACE_REPO is not set in GitHub Secrets."
-            echo "👉 To enable automatic deployment to Hugging Face Spaces:"
-            echo "   1. Add HF_TOKEN (Hugging Face write token) to GitHub Repository Secrets"
-            echo "   2. Add HF_SPACE_REPO (e.g. 'YourUsername/YourSpaceName') to GitHub Repository Secrets"
-            exit 0
-          fi
-
-          echo "🚀 Pushing latest changes to Hugging Face Space: https://huggingface.co/spaces/$HF_SPACE_REPO"
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          
-          # Add Hugging Face Space as a remote and force push the main branch
-          git remote add space "https://user:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE_REPO"
-          git push space main:main --force
-          echo "✅ Successfully synced and triggered Docker build on Hugging Face Spaces!"
