@@ -1,4 +1,4 @@
-name: CI/CD Pipeline - Test and Deploy to Render
+name: CI/CD Pipeline - Test & Deploy to Hugging Face Spaces
 
 on:
   push:
@@ -15,15 +15,17 @@ concurrency:
 
 jobs:
   # ------------------------------------------------------------
-  # 1. Test and Build Job (npm install, npm test, npm run build)
+  # 1. Test and Build Job
   # ------------------------------------------------------------
   test-and-build:
-    name: Install, Test & Build
+    name: Install, Lint & Build
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -32,7 +34,7 @@ jobs:
           cache: 'npm'
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci || npm install
 
       - name: Generate Prisma Client (if schema exists)
         run: |
@@ -40,58 +42,46 @@ jobs:
             npx prisma generate
           fi
 
-      - name: Run Tests
+      - name: Run Tests & Type Checks
         run: npm test
 
       - name: Run Production Build
         run: npm run build
 
   # ------------------------------------------------------------
-  # 2. Deployment to Render via API / Deploy Hooks
+  # 2. Automated Sync & Deploy to Hugging Face Space (Docker)
   # ------------------------------------------------------------
-  deploy-to-render:
-    name: Deploy to Render
+  deploy-to-huggingface:
+    name: Deploy to Hugging Face Spaces
     needs: test-and-build
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
 
     steps:
-      - name: Trigger Render Deploy Hook / API
-        env:
-          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK || secrets.RENDER_BACKEND_DEPLOY_HOOK }}
-          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
-          RENDER_SERVICE_ID: ${{ secrets.RENDER_SERVICE_ID }}
-        run: |
-          echo "🚀 Initiating deployment to Render..."
-          
-          # Strategy 1: Deploy Hook (Recommended & Simplest)
-          if [ -n "$RENDER_DEPLOY_HOOK" ]; then
-            echo "📡 Calling Render Deploy Webhook..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$RENDER_DEPLOY_HOOK")
-            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-              echo "✅ Render Deploy Hook triggered successfully (HTTP $HTTP_CODE)!"
-            else
-              echo "❌ Render Deploy Hook failed with HTTP $HTTP_CODE"
-              exit 1
-            fi
-          
-          # Strategy 2: Render REST API (with API Key & Service ID)
-          elif [ -n "$RENDER_API_KEY" ] && [ -n "$RENDER_SERVICE_ID" ]; then
-            echo "📡 Calling Render REST API (v1/services/$RENDER_SERVICE_ID/deploys)..."
-            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST \
-              -H "Authorization: Bearer $RENDER_API_KEY" \
-              -H "Accept: application/json" \
-              -H "Content-Type: application/json" \
-              "https://api.render.com/v1/services/$RENDER_SERVICE_ID/deploys")
-            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
-              echo "✅ Render REST API deployment dispatched successfully (HTTP $HTTP_CODE)!"
-            else
-              echo "❌ Render REST API call failed with HTTP $HTTP_CODE"
-              exit 1
-            fi
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
 
-          # Strategy 3: Render Auto-Deploy fallback
-          else
-            echo "ℹ️ Note: No RENDER_DEPLOY_HOOK or RENDER_API_KEY secret found."
-            echo "If your Render service has 'Auto-Deploy: Yes' connected to GitHub, Render is already deploying your commit automatically."
+      - name: Push to Hugging Face Spaces Git Repository
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_SPACE_REPO: ${{ secrets.HF_SPACE_REPO }} # e.g. "username/space-name" or "kundanvision369/gigpilot"
+        run: |
+          if [ -z "$HF_TOKEN" ] || [ -z "$HF_SPACE_REPO" ]; then
+            echo "⚠️ [Hugging Face Deploy]: HF_TOKEN or HF_SPACE_REPO is not set in GitHub Secrets."
+            echo "👉 To enable automatic deployment to Hugging Face Spaces:"
+            echo "   1. Add HF_TOKEN (Hugging Face write token) to GitHub Repository Secrets"
+            echo "   2. Add HF_SPACE_REPO (e.g. 'YourUsername/YourSpaceName') to GitHub Repository Secrets"
+            exit 0
           fi
+
+          echo "🚀 Pushing latest changes to Hugging Face Space: https://huggingface.co/spaces/$HF_SPACE_REPO"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add Hugging Face Space as a remote and force push the main branch
+          git remote add space "https://user:$HF_TOKEN@huggingface.co/spaces/$HF_SPACE_REPO"
+          git push space main:main --force
+          echo "✅ Successfully synced and triggered Docker build on Hugging Face Spaces!"

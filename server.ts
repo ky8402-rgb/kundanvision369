@@ -76,7 +76,7 @@ app.use((req, res, next) => {
 });
 
 // =========================================================================
-// 2. CORS & CROSS-ORIGIN COOKIE CONFIGURATION (Render.com)
+// 2. CORS & CROSS-ORIGIN COOKIE CONFIGURATION (Render & Hugging Face Spaces)
 // =========================================================================
 const ALLOWED_ORIGINS = [
   "https://kundanvision369.onrender.com",
@@ -91,15 +91,20 @@ const ALLOWED_ORIGINS = [
 app.use((req, res, next) => {
   const origin = req.headers.origin;
 
-  if (origin && (ALLOWED_ORIGINS.includes(origin) || origin === "https://kundanvision369.onrender.com" || origin.endsWith(".onrender.com"))) {
+  if (
+    origin &&
+    (ALLOWED_ORIGINS.includes(origin) ||
+      origin.endsWith(".onrender.com") ||
+      origin.endsWith(".hf.space") ||
+      origin.endsWith(".huggingface.co"))
+  ) {
     res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Credentials", "true");
   } else if (!origin) {
     // Same-origin, direct API, or webhook request
-    res.header("Access-Control-Allow-Origin", "https://kundanvision369.onrender.com");
-    res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Access-Control-Allow-Origin", "*");
   } else {
-    res.header("Access-Control-Allow-Origin", "https://kundanvision369.onrender.com");
+    res.header("Access-Control-Allow-Origin", origin);
     res.header("Access-Control-Allow-Credentials", "true");
   }
 
