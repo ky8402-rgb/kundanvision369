@@ -406,7 +406,7 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ onNavigateTo
               <span className="text-slate-500 text-[11px] font-medium mr-1 flex items-center gap-1">
                 <Filter className="w-3 h-3" /> Source:
               </span>
-              {['ALL', 'Upwork', 'Freelancer', 'RemoteOK', 'Indian Bank', 'PayPal'].map(src => (
+              {['ALL', 'Upwork', 'Freelancer', 'RemoteOK', 'Indian Bank', 'PayPal', 'PostgreSQL Backup'].map(src => (
                 <button
                   key={src}
                   onClick={() => setSourceFilter(src)}
@@ -431,7 +431,9 @@ export const ActivityLogsView: React.FC<ActivityLogsViewProps> = ({ onNavigateTo
                 { label: 'Webhooks', value: 'WEBHOOK_INCOMING' },
                 { label: 'Feed Syncs', value: 'FEED_SYNC' },
                 { label: 'Order State Sync', value: 'ORDER_STATE_SYNC' },
-                { label: 'Auto-Transfers', value: 'BANK_AUTO_TRANSFER' }
+                { label: 'Auto-Transfers', value: 'BANK_AUTO_TRANSFER' },
+                { label: 'DB Snapshots', value: 'DATABASE_SNAPSHOT_CREATED' },
+                { label: 'Disaster Recovery', value: 'DISASTER_RECOVERY_RESTORED' }
               ].map(t => (
                 <button
                   key={t.value}

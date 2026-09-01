@@ -18,6 +18,7 @@ const RealIncomeHub = lazy(() => import('./components/RealIncomeHub').then(m => 
 const PremiumLeadsRadar = lazy(() => import('./components/PremiumLeadsRadar').then(m => ({ default: m.PremiumLeadsRadar })));
 const LeadNotificationsHub = lazy(() => import('./components/LeadNotificationsHub').then(m => ({ default: m.LeadNotificationsHub })));
 const ActivityLogsView = lazy(() => import('./components/ActivityLogsView').then(m => ({ default: m.ActivityLogsView })));
+const DatabaseSnapshotManager = lazy(() => import('./components/DatabaseSnapshotManager').then(m => ({ default: m.DatabaseSnapshotManager })));
 const LegalComplianceModal = lazy(() => import('./components/LegalComplianceModal').then(m => ({ default: m.LegalComplianceModal })));
 const FreelancerMetricsSection = lazy(() => import('./components/FreelancerMetricsSection').then(m => ({ default: m.FreelancerMetricsSection })));
 const GSTInvoiceModal = lazy(() => import('./components/GSTInvoiceModal').then(m => ({ default: m.GSTInvoiceModal })));
@@ -125,7 +126,7 @@ const makeUniqueId = (prefix: string = 'id') => `${prefix}_${Date.now()}_${Math.
 
 export default function App() {
   // Navigation State (Default to dynamic live backend dashboard)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'income' | 'remoteok' | 'orders' | 'invoicing' | 'paypal' | 'bank' | 'analytics' | 'notifications' | 'leads' | 'logs'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'income' | 'remoteok' | 'orders' | 'invoicing' | 'paypal' | 'bank' | 'analytics' | 'notifications' | 'leads' | 'logs' | 'snapshots'>('dashboard');
 
   // AI Proposal Studio & Job Analysis State
   const [selectedProposalJob, setSelectedProposalJob] = useState<FreelanceJob | null>(null);
@@ -1247,7 +1248,8 @@ export default function App() {
                 { tab: 'invoicing' as const, label: 'Invoicing', icon: 'fa-file-invoice-dollar', color: '', badge: undefined, badgeColor: undefined, count: undefined },
                 { tab: 'paypal' as const, label: 'PayPal REST API', icon: 'fab fa-paypal', color: '', badge: 'v2 LIVE', badgeColor: 'bg-[#00cfe8]/20 text-[#00cfe8]', count: undefined },
                 { tab: 'analytics' as const, label: 'Analytics', icon: 'fa-chart-line', color: '', badge: undefined, badgeColor: undefined, count: undefined },
-                { tab: 'logs' as const, label: 'Activity Logs', icon: 'fa-terminal', color: '', badge: 'DEBUG', badgeColor: 'bg-indigo-500/20 text-indigo-300', count: undefined }
+                { tab: 'logs' as const, label: 'Activity Logs', icon: 'fa-terminal', color: '', badge: 'DEBUG', badgeColor: 'bg-indigo-500/20 text-indigo-300', count: undefined },
+                { tab: 'snapshots' as const, label: 'DB Snapshots & Recovery', icon: 'fa-database', color: '', badge: '3 MAX', badgeColor: 'bg-cyan-500/20 text-cyan-300', count: undefined }
               ]).map((item) => (
                 <button
                   key={item.tab}
@@ -1385,6 +1387,7 @@ export default function App() {
               {activeTab === 'bank' && <>Indian Bank Portal <span className="text-xs sm:text-sm font-normal text-[#9aa2bf]">IMPS / NEFT, UPI dynamic QR &amp; instant INR settlements</span></>}
               {activeTab === 'analytics' && <>Analytics <span className="text-xs sm:text-sm font-normal text-[#9aa2bf]">Autonomous performance insights</span></>}
               {activeTab === 'logs' && <>Activity Logs &amp; Webhook Debugger <span className="text-xs sm:text-sm font-normal text-[#9aa2bf]">Raw incoming payload telemetry &amp; live app-state sync</span></>}
+              {activeTab === 'snapshots' && <>Database Snapshots &amp; Disaster Recovery <span className="text-xs sm:text-sm font-normal text-[#9aa2bf]">Automated Daily Snapshots, SHA-256 Checksums &amp; 3-Backup Retention</span></>}
             </h1>
           </div>
 
@@ -1695,6 +1698,7 @@ export default function App() {
             <Suspense fallback={<LazyFallback label="Loading Connectivity Status..." />}>
               <SystemHealthConnectivityCard
                 onOpenSettings={() => setIsCredentialsModalOpen(true)}
+                onNavigateToSnapshots={() => setActiveTab('snapshots')}
               />
             </Suspense>
 
@@ -2524,6 +2528,13 @@ export default function App() {
         {activeTab === 'logs' && (
           <Suspense fallback={<LazyFallback label="Loading Activity Logs..." />}>
             <ActivityLogsView onNavigateToTab={(t) => setActiveTab(t as any)} />
+          </Suspense>
+        )}
+
+        {/* ===== TAB 9: POSTGRESQL DATABASE SNAPSHOTS & DISASTER RECOVERY ===== */}
+        {activeTab === 'snapshots' && (
+          <Suspense fallback={<LazyFallback label="Loading Database Snapshot Manager..." />}>
+            <DatabaseSnapshotManager onNavigateToLogs={() => setActiveTab('logs')} />
           </Suspense>
         )}
 

@@ -43,6 +43,8 @@ import { prisma, checkDatabaseConnection, syncLiveJobsToPostgres } from "./serve
 import { getGeminiAI } from "./server/gemini.js";
 import { clearBidsCache, apiCacheMiddleware, getCacheStats } from "./server/redisCache.js";
 import { selfHealer, supportSystem, metricsRegistry, predictiveHealer } from "./server/selfHealing.js";
+import { diagnosticEngine, advancedResolutionEngine } from "./server/diagnosticEngine.js";
+import { snapshotService, MAX_SUCCESSFUL_BACKUPS } from "./server/snapshotService.js";
 import {
   proposalGenerationQueue,
   reportProcessingQueue,
@@ -509,10 +511,189 @@ app.post("/api/error/report", (req, res) => {
   }
 });
 
+// Comprehensive Multi-Layer System Diagnostics
+app.get("/api/diagnostics", async (req, res) => {
+  try {
+    const results = await diagnosticEngine.runFullDiagnostic();
+    res.json({
+      success: true,
+      data: results
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to run system diagnostics"
+    });
+  }
+});
+
+// AI-Assisted Auto-Resolution with Verification and Multi-Step Fallback
+app.post("/api/support/resolve", async (req, res) => {
+  try {
+    const { issue, errorLog } = req.body || {};
+    const resolution = await advancedResolutionEngine.resolveIssue(issue || "General system diagnostics check");
+    res.json({
+      success: true,
+      resolution
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Auto-resolution failed to complete"
+    });
+  }
+});
+
+// Real-Time Progress Streaming for Auto-Resolution (Server-Sent Events)
+app.post("/api/support/resolve-stream", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache, no-transform");
+  res.setHeader("Connection", "keep-alive");
+  if (typeof (res as any).flushHeaders === "function") {
+    (res as any).flushHeaders();
+  }
+
+  const { issue } = req.body || {};
+
+  const onProgress = (msg: string) => {
+    try {
+      res.write(`data: ${JSON.stringify({ type: "progress", message: msg })}\n\n`);
+    } catch {}
+  };
+
+  try {
+    const resolution = await advancedResolutionEngine.resolveIssue(issue || "System health check", onProgress);
+    res.write(`data: ${JSON.stringify({ type: "done", resolution })}\n\n`);
+  } catch (error: any) {
+    res.write(`data: ${JSON.stringify({ type: "error", message: error.message || "Streaming resolution failed" })}\n\n`);
+  } finally {
+    res.end();
+  }
+});
+
+// Telemetry & Learned Resolution Strategy Weights
+app.get("/api/support/history", (req, res) => {
+  res.json({
+    success: true,
+    history: advancedResolutionEngine.getHistory(),
+    learnedWeights: advancedResolutionEngine.getLearnedWeights()
+  });
+});
+
+// Periodic 5-Minute Deep Background Diagnostic & Preemptive Fixes
+setInterval(async () => {
+  try {
+    const report = await diagnosticEngine.runFullDiagnostic();
+    const criticalChecks = Object.entries(report.checks).filter(([_, c]) => c.status === "critical" || c.status === "error");
+    if (criticalChecks.length > 0) {
+      console.warn(`⚠️ [BackgroundDiagnostics] Critical issues detected in [${criticalChecks.map(([k]) => k).join(', ')}]. Initiating preemptive remediation...`);
+      await advancedResolutionEngine.resolveIssue(`Preemptive background fix for ${criticalChecks.map(([k]) => k).join(', ')}`);
+    }
+  } catch (err: any) {
+    console.error(`[BackgroundDiagnostics] Periodic check failed:`, err.message);
+  }
+}, 300000);
+
 // Database Status (PostgreSQL / Supabase via DATABASE_URL)
 app.get("/api/db/status", async (req, res) => {
   const status = await checkDatabaseConnection();
   res.json(status);
+});
+
+// PostgreSQL Database Snapshot & Disaster Recovery Endpoints
+// 1. Get Snapshot Status & 3 Retained Backups
+app.get("/api/db/snapshots", (req, res) => {
+  try {
+    const status = snapshotService.getStatus();
+    res.json({
+      success: true,
+      ...status
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to retrieve snapshot status"
+    });
+  }
+});
+
+// 2. Trigger Instant PostgreSQL Snapshot (Enforces 3-backup retention)
+app.post("/api/db/snapshots/trigger", async (req, res) => {
+  try {
+    const { trigger = "MANUAL_TRIGGER", notes } = req.body || {};
+    const snapshot = await snapshotService.triggerSnapshot(trigger, notes);
+    const updatedStatus = snapshotService.getStatus();
+    res.json({
+      success: true,
+      message: `PostgreSQL database snapshot ${snapshot.id} successfully created and verified (${snapshot.sizeFormatted}, ${snapshot.totalRecords} records).`,
+      snapshot,
+      retainedBackups: updatedStatus.backups,
+      retentionPolicy: updatedStatus.retentionPolicy
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to create database snapshot"
+    });
+  }
+});
+
+// 3. Restore Database State from Snapshot (Disaster Recovery)
+app.post("/api/db/snapshots/restore", async (req, res) => {
+  try {
+    const { snapshotId, dryRun = false } = req.body || {};
+    if (!snapshotId) {
+      return res.status(400).json({ success: false, error: "snapshotId is required for state restoration." });
+    }
+
+    const result = await snapshotService.restoreSnapshot(snapshotId, { dryRun: Boolean(dryRun) });
+    res.json({
+      success: true,
+      ...result
+    });
+  } catch (error: any) {
+    res.status(500).json({
+      success: false,
+      error: error.message || "Failed to restore database state from snapshot"
+    });
+  }
+});
+
+// 4. Verify Snapshot Integrity (Checksum & Schema Validation)
+app.post("/api/db/snapshots/verify/:id", async (req, res) => {
+  try {
+    const snapshotId = req.params.id;
+    const result = await snapshotService.restoreSnapshot(snapshotId, { dryRun: true });
+    res.json({
+      success: true,
+      snapshotId,
+      verified: true,
+      details: result
+    });
+  } catch (error: any) {
+    res.status(400).json({
+      success: false,
+      snapshotId: req.params.id,
+      verified: false,
+      error: error.message
+    });
+  }
+});
+
+// 5. Download Snapshot Dump Payload (JSON)
+app.get("/api/db/snapshots/download/:id", (req, res) => {
+  try {
+    const snapshotId = req.params.id;
+    const payload = snapshotService.getSnapshotPayload(snapshotId);
+    if (!payload) {
+      return res.status(404).json({ success: false, error: "Snapshot payload not found on disk." });
+    }
+    res.setHeader("Content-Disposition", `attachment; filename="postgresql_snapshot_${snapshotId}.json"`);
+    res.setHeader("Content-Type", "application/json");
+    res.send(JSON.stringify(payload, null, 2));
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // Prometheus & OpenMetrics Metrics Endpoint
@@ -1016,6 +1197,13 @@ setTimeout(() => {
   console.log('[node-cron] Triggering initial background sync on server startup...');
   runHourlyJobSyncWorker();
 }, 5000);
+
+// Initialize PostgreSQL Snapshot & Disaster Recovery Service
+snapshotService.initialize().then(() => {
+  console.log('🛡️ [SnapshotService] PostgreSQL Daily Snapshot & Disaster Recovery engine initialized (Retention: 3 max).');
+}).catch(err => {
+  console.error('[SnapshotService] Failed to initialize snapshot service:', err);
+});
 
 // Start Server & Mount Vite Middleware
 async function startServer() {

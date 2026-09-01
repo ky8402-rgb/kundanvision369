@@ -9,7 +9,7 @@ interface MemoryCacheEntry {
 const memoryStore = new Map<string, MemoryCacheEntry>();
 
 let redisClient: Redis | null = null;
-let isRedisAvailable = false;
+export let isRedisAvailable = false;
 let hasReportedFallback = false;
 
 // Initialize Redis if REDIS_URL environment variable is provided

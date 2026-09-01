@@ -65,19 +65,22 @@ export class SelfHealingSystem {
     const heapTotalMB = Math.round(memory.heapTotal / 1024 / 1024);
     const memoryPressurePercent = Math.round((memory.heapUsed / (memory.heapTotal || 1)) * 100);
 
-    // 1. Memory Pressure Inspection
-    if (memoryPressurePercent > 90) {
+    // 1. Memory Pressure Inspection against total available memory headroom (container typical 512MB / 1GB)
+    const maxExpectedHeapMB = 512;
+    const realHeapPressurePercent = Math.min(100, Math.round((heapUsedMB / maxExpectedHeapMB) * 100));
+
+    if (heapUsedMB > 450) {
       issues.push({
         type: "HIGH_MEMORY_USAGE",
         severity: "critical",
-        message: `High memory heap pressure: ${memoryPressurePercent}% used (${heapUsedMB}MB / ${heapTotalMB}MB)`,
+        message: `High memory heap pressure: ${heapUsedMB}MB used (Threshold: 450MB)`,
         timestamp: new Date().toISOString()
       });
-    } else if (memoryPressurePercent > 80) {
+    } else if (heapUsedMB > 350) {
       issues.push({
         type: "ELEVATED_MEMORY_USAGE",
         severity: "medium",
-        message: `Elevated heap usage: ${memoryPressurePercent}% (${heapUsedMB}MB)`,
+        message: `Elevated heap usage: ${heapUsedMB}MB used (Threshold: 350MB)`,
         timestamp: new Date().toISOString()
       });
     }
@@ -109,7 +112,7 @@ export class SelfHealingSystem {
         memoryUsageMB: Math.round(memory.rss / 1024 / 1024),
         heapUsedMB,
         heapTotalMB,
-        memoryPressurePercent,
+        memoryPressurePercent: realHeapPressurePercent,
         uptimeSeconds: Math.round(process.uptime()),
         crashRecoveryCount: this.crashRecoveryCount
       },

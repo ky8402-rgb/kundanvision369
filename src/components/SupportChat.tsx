@@ -12,7 +12,17 @@ import {
   ShieldCheck, 
   Cpu, 
   Activity,
-  Terminal
+  Terminal,
+  Server,
+  HardDrive,
+  Globe,
+  Database,
+  Layers,
+  Zap,
+  TrendingUp,
+  History,
+  Check,
+  AlertCircle
 } from 'lucide-react';
 import { errorMonitor } from '../services/errorMonitor';
 import { invalidateApiCache } from '../services/api';
@@ -28,11 +38,39 @@ interface SupportMessage {
     confidence: number;
     aiExplanation?: string;
   };
+  resolution?: {
+    issue: string;
+    issueType: string;
+    success: boolean;
+    actions: Array<{
+      action: string;
+      description: string;
+      status: 'attempted' | 'verified' | 'failed' | 'skipped';
+      timestamp: string;
+    }>;
+    logs: string[];
+    escalation: boolean;
+  };
   solution?: {
     steps: string[];
     autoFix: boolean;
     status?: string;
     actionsExecuted?: string[];
+  };
+}
+
+interface DiagnosticReport {
+  timestamp: string;
+  overallStatus: 'healthy' | 'warning' | 'critical';
+  checks: {
+    memory: any;
+    cpu: any;
+    disk: any;
+    network: any;
+    database: any;
+    api: any;
+    redis: any;
+    dependencies: any;
   };
 }
 
@@ -44,27 +82,31 @@ interface SupportChatProps {
 export const SupportChat: React.FC<SupportChatProps> = ({ appContext, onToast }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [activeTab, setActiveTab] = useState<'chat' | 'diagnostics' | 'learned'>('chat');
   const [messages, setMessages] = useState<SupportMessage[]>([
     {
       id: 'welcome',
       type: 'ai',
-      text: '👋 Hello! I am your AI Self-Healing Support Assistant. Describe any issue or click a quick diagnostic below to inspect and auto-heal the system.',
+      text: '👋 Hello! I am your AI Self-Healing & Diagnostic Agent. I run real-time multi-layer diagnostics, execute automated fixes with health verification, and adapt recovery strategies from past resolutions.',
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [autoFixStatus, setAutoFixStatus] = useState<string | null>(null);
-  const [systemHealth, setSystemHealth] = useState<any>(null);
+  const [resolutionProgress, setResolutionProgress] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DiagnosticReport | null>(null);
+  const [isDiagLoading, setIsDiagLoading] = useState(false);
+  const [learnedData, setLearnedData] = useState<{ history: any[]; learnedWeights: Record<string, any> } | null>(null);
   const [hasUrgentError, setHasUrgentError] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll messages to bottom
   useEffect(() => {
-    if (isOpen && !isMinimized) {
+    if (isOpen && !isMinimized && activeTab === 'chat') {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, isOpen, isMinimized]);
+  }, [messages, isOpen, isMinimized, activeTab]);
 
   // Subscribe to error monitor for automatic real-time alerts
   useEffect(() => {
@@ -86,131 +128,167 @@ export const SupportChat: React.FC<SupportChatProps> = ({ appContext, onToast })
     return () => unsub();
   }, []);
 
-  // Fetch system health on mount
+  // Fetch diagnostics on mount and every 45s
   useEffect(() => {
-    fetchHealthStatus();
-    const interval = setInterval(fetchHealthStatus, 30000);
+    fetchDiagnostics();
+    fetchLearnedHistory();
+    const interval = setInterval(() => {
+      fetchDiagnostics(true);
+    }, 45000);
     return () => clearInterval(interval);
   }, []);
 
-  const fetchHealthStatus = async () => {
+  const fetchDiagnostics = async (silent = false) => {
+    if (!silent) setIsDiagLoading(true);
     try {
-      const res = await fetch('/api/health');
+      const res = await fetch('/api/diagnostics');
       if (res.ok) {
         const data = await res.json();
-        setSystemHealth(data);
+        if (data.success && data.data) {
+          setDiagnostics(data.data);
+        }
       }
     } catch {
-      // Quiet background polling
+      // Quiet fail
+    } finally {
+      if (!silent) setIsDiagLoading(false);
     }
   };
 
-  const sendMessage = async (customPrompt?: string) => {
-    const textToSend = (customPrompt || input).trim();
-    if (!textToSend || isLoading) return;
+  const fetchLearnedHistory = async () => {
+    try {
+      const res = await fetch('/api/support/history');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setLearnedData(data);
+        }
+      }
+    } catch {}
+  };
+
+  const sendAutoResolveIssue = async (customPrompt?: string) => {
+    const issueText = (customPrompt || input).trim();
+    if (!issueText || isLoading) return;
 
     const userMessage: SupportMessage = {
       id: `user_${Date.now()}`,
       type: 'user',
-      text: textToSend,
+      text: issueText,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     };
 
     setMessages(prev => [...prev, userMessage]);
     if (!customPrompt) setInput('');
     setIsLoading(true);
-    setAutoFixStatus('Analyzing error telemetry and generating recovery steps...');
+    setResolutionProgress('🔍 Initializing multi-layer diagnostics & resolution loop...');
+    setAutoFixStatus('Executing Diagnostic & Verification Loop...');
 
     try {
-      const errorLogs = errorMonitor.getRecentErrors();
-      const res = await fetch('/api/support/analyze', {
+      // Try streaming SSE endpoint first
+      const res = await fetch('/api/support/resolve-stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          issue: textToSend,
-          errorLog: errorLogs,
-          appContext: {
-            ...appContext,
-            systemHealth: systemHealth?.status,
-            userAgent: navigator.userAgent
-          }
-        })
+        body: JSON.stringify({ issue: issueText })
       });
 
-      if (!res.ok) {
-        throw new Error(`Support API returned status ${res.status}`);
-      }
+      if (res.ok && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-      const result = await res.json();
-      if (result.success && result.data) {
-        const { analysis, solution } = result.data;
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
 
-        const aiResponse: SupportMessage = {
-          id: `ai_${Date.now()}`,
-          type: 'ai',
-          text: analysis?.aiExplanation 
-            ? `🔍 ${analysis.aiExplanation}`
-            : `🔍 Diagnostic Analysis: ${analysis?.suggestedFix || 'System analyzed.'}`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          analysis,
-          solution
-        };
+          const lines = buffer.split('\n\n');
+          buffer = lines.pop() || '';
 
-        setMessages(prev => [...prev, aiResponse]);
-
-        if (solution?.autoFix) {
-          setAutoFixStatus('✅ Auto-Fix Applied & Verified');
-          invalidateApiCache('all');
-          if (onToast) {
-            onToast('🔧 AI Support auto-fixed and refreshed system connections.', 'success');
+          for (const line of lines) {
+            if (line.startsWith('data: ')) {
+              try {
+                const parsed = JSON.parse(line.slice(6));
+                if (parsed.type === 'progress') {
+                  setResolutionProgress(parsed.message);
+                } else if (parsed.type === 'done') {
+                  const resolution = parsed.resolution;
+                  handleResolutionFinished(resolution);
+                }
+              } catch {}
+            }
           }
-          setTimeout(() => setAutoFixStatus(null), 4000);
-        } else {
-          setAutoFixStatus(null);
         }
+      } else {
+        // Fallback to standard POST
+        await fallbackResolve(issueText);
       }
-    } catch (err: any) {
-      console.warn('[SupportChat] Error sending support request:', err);
-      const fallbackAiMsg: SupportMessage = {
-        id: `ai_err_${Date.now()}`,
-        type: 'ai',
-        text: `⚠️ Running fallback self-healing diagnostic. Attempting automatic cache flush and pool reconnection.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        solution: {
-          steps: ['Clear local API cache', 'Ping database endpoint', 'Resynchronize live state'],
-          autoFix: true
-        }
-      };
-      setMessages(prev => [...prev, fallbackAiMsg]);
-      invalidateApiCache('all');
-      setAutoFixStatus(null);
+    } catch {
+      await fallbackResolve(issueText);
     } finally {
       setIsLoading(false);
-      fetchHealthStatus();
+      setResolutionProgress(null);
+      fetchDiagnostics(true);
+      fetchLearnedHistory();
     }
   };
 
-  const handleApplyAutoFix = async (solution: any) => {
-    setIsLoading(true);
-    setAutoFixStatus('Applying auto-fix steps...');
+  const fallbackResolve = async (issueText: string) => {
     try {
-      const res = await fetch('/api/support/autofix', {
+      const res = await fetch('/api/support/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ solution })
+        body: JSON.stringify({ issue: issueText })
       });
-      if (res.ok) {
-        invalidateApiCache('all');
-        setAutoFixStatus('✅ All fix steps successfully applied');
-        if (onToast) onToast('✅ Auto-fix steps executed successfully.', 'success');
-        fetchHealthStatus();
-        setTimeout(() => setAutoFixStatus(null), 3000);
+      const data = await res.json();
+      if (data.success && data.resolution) {
+        handleResolutionFinished(data.resolution);
       }
-    } catch (err) {
-      console.error('[SupportChat] Auto-fix execution error:', err);
-      setAutoFixStatus('❌ Auto-fix attempt encountered an error');
-    } finally {
-      setIsLoading(false);
+    } catch {
+      const errorMsg: SupportMessage = {
+        id: `ai_err_${Date.now()}`,
+        type: 'ai',
+        text: '⚠️ Manual intervention required: Diagnostic services are currently recovering.',
+        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    }
+  };
+
+  const handleResolutionFinished = (resolution: any) => {
+    invalidateApiCache('all');
+    const aiMessage: SupportMessage = {
+      id: `ai_res_${Date.now()}`,
+      type: 'ai',
+      text: resolution.success
+        ? `✅ System Auto-Resolved! Issue classified as "${resolution.issueType}". All verification checks passed.`
+        : `⚠️ Remediation partial: Executed ${resolution.actions.length} fixes. Escalated to manual telemetry observation.`,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      resolution
+    };
+
+    setMessages(prev => [...prev, aiMessage]);
+    setAutoFixStatus(resolution.success ? '✅ Issue Verified & Resolved' : '⚠️ Actions Executed (Telemetry Updated)');
+    if (onToast) {
+      onToast(
+        resolution.success ? '🔧 AI Diagnostic: Fix applied & health verified!' : '⚠️ AI Diagnostic: Recovery actions completed.',
+        resolution.success ? 'success' : 'info'
+      );
+    }
+    setTimeout(() => setAutoFixStatus(null), 4000);
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'healthy':
+        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/80 font-medium">Healthy</span>;
+      case 'warning':
+        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950/80 text-amber-400 border border-amber-800/80 font-medium">Warning</span>;
+      case 'critical':
+      case 'error':
+        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-400 border border-rose-800/80 font-medium">Critical</span>;
+      default:
+        return <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400">Unknown</span>;
     }
   };
 
@@ -235,19 +313,19 @@ export const SupportChat: React.FC<SupportChatProps> = ({ appContext, onToast })
             <Bot className="w-5 h-5 transition-transform group-hover:rotate-12" />
             <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-300 rounded-full ring-2 ring-emerald-600 animate-ping" />
           </div>
-          <span className="font-semibold text-sm tracking-wide">AI Support & Self-Healing</span>
+          <span className="font-semibold text-sm tracking-wide">AI Diagnostics & Auto-Healing</span>
           {hasUrgentError && (
             <span className="bg-white text-rose-600 text-xs px-2 py-0.5 rounded-full font-bold">1</span>
           )}
         </button>
       )}
 
-      {/* Floating Chat Modal */}
+      {/* Floating Modal Window */}
       {isOpen && (
         <div 
           id="support-chat-modal"
-          className={`w-96 md:w-[420px] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col transition-all duration-200 ${
-            isMinimized ? 'h-14' : 'h-[560px]'
+          className={`w-96 md:w-[460px] bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl overflow-hidden flex flex-col transition-all duration-200 ${
+            isMinimized ? 'h-14' : 'h-[620px]'
           }`}
         >
           {/* Header */}
@@ -258,10 +336,10 @@ export const SupportChat: React.FC<SupportChatProps> = ({ appContext, onToast })
               </div>
               <div>
                 <h3 className="font-semibold text-sm text-slate-100 flex items-center gap-1.5">
-                  AI Support & Healing
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  AI Diagnostics & Auto-Resolution
+                  <span className={`w-2 h-2 rounded-full ${diagnostics?.overallStatus === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400'} animate-pulse`} />
                 </h3>
-                <p className="text-[11px] text-slate-400">Autonomous issue diagnosis & repair</p>
+                <p className="text-[11px] text-slate-400">Deep telemetry & verified auto-healing</p>
               </div>
             </div>
 
@@ -287,141 +365,355 @@ export const SupportChat: React.FC<SupportChatProps> = ({ appContext, onToast })
 
           {!isMinimized && (
             <>
-              {/* Telemetry Status Bar */}
-              <div className="bg-slate-950/60 border-b border-slate-800 px-4 py-2 flex items-center justify-between text-xs text-slate-400">
-                <div className="flex items-center gap-2">
-                  <Activity className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>
-                    Status: <strong className="text-slate-200">{systemHealth?.status || 'operational'}</strong>
-                  </span>
+              {/* Navigation Tabs */}
+              <div className="bg-slate-950/80 border-b border-slate-800 px-3 py-1.5 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setActiveTab('chat')}
+                    className={`px-3 py-1 rounded-md font-medium transition-colors ${
+                      activeTab === 'chat'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    Chat & Healing
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('diagnostics');
+                      fetchDiagnostics();
+                    }}
+                    className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                      activeTab === 'diagnostics'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    <Activity className="w-3 h-3" />
+                    Diagnostics
+                    {diagnostics?.overallStatus && (
+                      <span className={`w-1.5 h-1.5 rounded-full ${diagnostics.overallStatus === 'healthy' ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveTab('learned');
+                      fetchLearnedHistory();
+                    }}
+                    className={`px-3 py-1 rounded-md font-medium transition-colors flex items-center gap-1 ${
+                      activeTab === 'learned'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                    }`}
+                  >
+                    <TrendingUp className="w-3 h-3" />
+                    Learned Fixes
+                  </button>
                 </div>
-                {systemHealth?.selfHealing?.metrics && (
-                  <div className="flex items-center gap-1 text-[11px] text-slate-400">
-                    <Cpu className="w-3 h-3 text-cyan-400" />
-                    <span>Heap: {systemHealth.selfHealing.metrics.heapUsedMB}MB</span>
-                  </div>
-                )}
+
                 {autoFixStatus && (
-                  <span className="text-[11px] text-emerald-400 font-medium animate-pulse">
+                  <span className="text-[10px] text-emerald-400 font-medium animate-pulse truncate max-w-[140px]">
                     {autoFixStatus}
                   </span>
                 )}
               </div>
 
-              {/* Messages Body */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-900/50">
-                {messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex flex-col ${msg.type === 'user' ? 'items-end' : 'items-start'}`}
-                  >
-                    <div
-                      className={`max-w-[90%] rounded-xl p-3 text-xs leading-relaxed ${
-                        msg.type === 'user'
-                          ? 'bg-emerald-600 text-white rounded-br-none'
-                          : msg.type === 'system'
-                          ? 'bg-amber-950/60 border border-amber-800 text-amber-200 rounded-bl-none'
-                          : 'bg-slate-800/90 border border-slate-700/70 text-slate-200 rounded-bl-none shadow-sm'
-                      }`}
-                    >
-                      <div className="whitespace-pre-wrap">{msg.text}</div>
+              {/* TAB 1: Chat & Interactive Healing */}
+              {activeTab === 'chat' && (
+                <div className="flex-1 flex flex-col min-h-0">
+                  {/* Messages Body */}
+                  <div className="flex-1 overflow-y-auto p-4 space-y-3.5 bg-slate-900/50">
+                    {messages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        className={`flex flex-col ${msg.type === 'user' ? 'items-end' : 'items-start'}`}
+                      >
+                        <div
+                          className={`max-w-[92%] rounded-xl p-3 text-xs leading-relaxed ${
+                            msg.type === 'user'
+                              ? 'bg-emerald-600 text-white rounded-br-none'
+                              : msg.type === 'system'
+                              ? 'bg-amber-950/60 border border-amber-800 text-amber-200 rounded-bl-none'
+                              : 'bg-slate-800/90 border border-slate-700/70 text-slate-200 rounded-bl-none shadow-sm'
+                          }`}
+                        >
+                          <div className="whitespace-pre-wrap">{msg.text}</div>
 
-                      {/* Solution Steps & Auto-fix panel */}
-                      {msg.solution && msg.solution.steps.length > 0 && (
-                        <div className="mt-2.5 pt-2.5 border-t border-slate-700/60 space-y-1.5">
-                          <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400">
-                            <span className="flex items-center gap-1">
-                              <ShieldCheck className="w-3.5 h-3.5" />
-                              Auto-Recovery Plan:
-                            </span>
-                            {msg.solution.autoFix && (
-                              <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-800 px-1.5 py-0.5 rounded font-mono">
-                                Auto-Enabled
-                              </span>
+                          {/* Multi-step Resolution Details */}
+                          {msg.resolution && (
+                            <div className="mt-2.5 pt-2.5 border-t border-slate-700/60 space-y-2">
+                              <div className="flex items-center justify-between text-[11px] font-semibold text-emerald-400">
+                                <span className="flex items-center gap-1">
+                                  <ShieldCheck className="w-3.5 h-3.5" />
+                                  Executed Fix Strategies:
+                                </span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono ${
+                                  msg.resolution.success ? 'bg-emerald-950 text-emerald-300 border border-emerald-800' : 'bg-amber-950 text-amber-300 border border-amber-800'
+                                }`}>
+                                  {msg.resolution.success ? 'Verified Healthy' : 'Telemetry Logged'}
+                                </span>
+                              </div>
+
+                              <div className="space-y-1.5">
+                                {msg.resolution.actions.map((act, idx) => (
+                                  <div key={idx} className="bg-slate-900/80 rounded-lg p-2 border border-slate-800 text-[11px] flex items-start gap-2">
+                                    {act.status === 'verified' ? (
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
+                                    ) : act.status === 'attempted' ? (
+                                      <RefreshCw className="w-3.5 h-3.5 text-cyan-400 mt-0.5 shrink-0" />
+                                    ) : (
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 shrink-0" />
+                                    )}
+                                    <div className="flex-1">
+                                      <div className="text-slate-200 font-medium">{act.description}</div>
+                                      <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-2">
+                                        <span>Status: <strong className={act.status === 'verified' ? 'text-emerald-400' : act.status === 'failed' ? 'text-rose-400' : 'text-cyan-400'}>{act.status}</strong></span>
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              {msg.resolution.logs.length > 0 && (
+                                <div className="text-[10px] bg-slate-950/60 p-2 rounded text-slate-400 font-mono space-y-0.5">
+                                  {msg.resolution.logs.map((lg, i) => (
+                                    <div key={i}>{lg}</div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-500 mt-1 px-1">{msg.timestamp}</span>
+                      </div>
+                    ))}
+
+                    {isLoading && (
+                      <div className="flex flex-col gap-1.5 p-3 bg-slate-800/80 border border-slate-700/60 rounded-xl text-xs text-slate-300 w-[90%] animate-pulse">
+                        <div className="flex items-center gap-2 font-semibold text-emerald-400">
+                          <Sparkles className="w-4 h-4 text-emerald-400 animate-spin" />
+                          <span>Autonomous Fix & Verification in Progress...</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 pl-6">
+                          {resolutionProgress || 'Running diagnostics and verifying resolution outcomes...'}
+                        </div>
+                      </div>
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+
+                  {/* Quick Diagnostic Triggers */}
+                  <div className="bg-slate-950/60 border-t border-slate-800 p-2 flex items-center gap-1.5 overflow-x-auto text-[11px]">
+                    <button
+                      onClick={() => sendAutoResolveIssue('Diagnose and verify PostgreSQL database connection')}
+                      disabled={isLoading}
+                      className="whitespace-nowrap px-2.5 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded-md border border-slate-700 transition-colors flex items-center gap-1"
+                    >
+                      <Database className="w-3 h-3 text-emerald-400" />
+                      Verify DB
+                    </button>
+                    <button
+                      onClick={() => sendAutoResolveIssue('Inspect memory pressure and flush Redis/in-memory caches')}
+                      disabled={isLoading}
+                      className="whitespace-nowrap px-2.5 py-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-300 rounded-md border border-slate-700 transition-colors flex items-center gap-1"
+                    >
+                      <RefreshCw className="w-3 h-3 text-cyan-400" />
+                      Flush Cache
+                    </button>
+                    <button
+                      onClick={() => sendAutoResolveIssue('Run full multi-layer diagnostic and auto-repair all sub-systems')}
+                      disabled={isLoading}
+                      className="whitespace-nowrap px-2.5 py-1 bg-emerald-950 hover:bg-emerald-900 disabled:opacity-50 text-emerald-300 rounded-md border border-emerald-700/60 transition-colors flex items-center gap-1"
+                    >
+                      <Zap className="w-3 h-3 text-amber-400" />
+                      Deep Auto-Heal
+                    </button>
+                  </div>
+
+                  {/* Input Footer */}
+                  <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
+                    <input
+                      id="input-support-chat-message"
+                      type="text"
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && sendAutoResolveIssue()}
+                      placeholder="Describe issue (e.g. 'DB error', 'Slow response')..."
+                      disabled={isLoading}
+                      className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
+                    />
+                    <button
+                      id="btn-send-support-message"
+                      onClick={() => sendAutoResolveIssue()}
+                      disabled={isLoading || !input.trim()}
+                      className="p-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl transition-colors shrink-0"
+                      title="Run Diagnostic & Auto-Resolve"
+                    >
+                      <Send className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: Multi-Layer Diagnostics Panel */}
+              {activeTab === 'diagnostics' && (
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-900/50 text-xs">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-semibold text-slate-100">Multi-Layer Diagnostic Engine</h4>
+                      <p className="text-[11px] text-slate-400">Real-time health telemetry across all sub-systems</p>
+                    </div>
+                    <button
+                      onClick={() => fetchDiagnostics()}
+                      disabled={isDiagLoading}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md border border-slate-700 flex items-center gap-1.5 transition-colors"
+                    >
+                      <RefreshCw className={`w-3 h-3 text-cyan-400 ${isDiagLoading ? 'animate-spin' : ''}`} />
+                      Refresh
+                    </button>
+                  </div>
+
+                  {diagnostics ? (
+                    <div className="space-y-2.5">
+                      {/* Sub-system Check Cards */}
+                      {Object.entries(diagnostics.checks || {}).map(([key, value]: [string, any]) => {
+                        const iconMap: Record<string, any> = {
+                          memory: <Cpu className="w-4 h-4 text-cyan-400" />,
+                          cpu: <Activity className="w-4 h-4 text-purple-400" />,
+                          disk: <HardDrive className="w-4 h-4 text-amber-400" />,
+                          network: <Globe className="w-4 h-4 text-emerald-400" />,
+                          database: <Database className="w-4 h-4 text-blue-400" />,
+                          api: <Server className="w-4 h-4 text-indigo-400" />,
+                          redis: <Layers className="w-4 h-4 text-pink-400" />,
+                          dependencies: <ShieldCheck className="w-4 h-4 text-teal-400" />
+                        };
+
+                        return (
+                          <div key={key} className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 flex flex-col gap-1.5">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 font-medium capitalize text-slate-200">
+                                {iconMap[key] || <Activity className="w-4 h-4 text-slate-400" />}
+                                {key} Diagnostic
+                              </div>
+                              {getStatusBadge(value.status)}
+                            </div>
+
+                            <div className="text-[11px] text-slate-400 flex flex-wrap gap-x-3 gap-y-1">
+                              {value.heapUsedMB !== undefined && <span>Heap: <strong>{value.heapUsedMB}MB / {value.heapTotalMB}MB</strong></span>}
+                              {value.loadPercent !== undefined && <span>Load: <strong>{value.loadPercent}%</strong> ({value.cores} cores)</span>}
+                              {value.usedPercent !== undefined && key === 'disk' && <span>Disk Used: <strong>{value.usedPercent}%</strong></span>}
+                              {value.latencyMs !== undefined && <span>Latency: <strong>{value.latencyMs}ms</strong></span>}
+                              {value.provider && <span>Provider: <strong>{value.provider}</strong></span>}
+                              {value.message && <span className="text-slate-300">{value.message}</span>}
+                            </div>
+
+                            {value.recommendation && (
+                              <div className="text-[10px] text-slate-400 bg-slate-900/80 px-2 py-1 rounded border border-slate-800/80 flex items-center justify-between">
+                                <span>💡 {value.recommendation}</span>
+                                {value.status !== 'healthy' && (
+                                  <button
+                                    onClick={() => {
+                                      setActiveTab('chat');
+                                      sendAutoResolveIssue(`Auto-resolve ${key} issue: ${value.recommendation}`);
+                                    }}
+                                    className="text-emerald-400 hover:text-emerald-300 font-medium ml-2 underline shrink-0"
+                                  >
+                                    Auto-Fix
+                                  </button>
+                                )}
+                              </div>
                             )}
                           </div>
-                          <ul className="space-y-1 text-[11px] text-slate-300 pl-1">
-                            {msg.solution.steps.map((step, idx) => (
-                              <li key={idx} className="flex items-start gap-1.5">
-                                <CheckCircle2 className="w-3 h-3 text-emerald-400 mt-0.5 shrink-0" />
-                                <span>{step}</span>
-                              </li>
-                            ))}
-                          </ul>
+                        );
+                      })}
 
-                          {/* Quick Manual Trigger Button if not auto-executed */}
-                          <div className="pt-1.5 flex justify-end">
-                            <button
-                              onClick={() => handleApplyAutoFix(msg.solution)}
-                              disabled={isLoading}
-                              className="text-[10px] flex items-center gap-1 bg-emerald-600/30 hover:bg-emerald-600/50 text-emerald-300 border border-emerald-500/40 px-2 py-1 rounded transition-colors"
-                            >
-                              <Wrench className="w-3 h-3" />
-                              Re-Execute Recovery
-                            </button>
+                      <div className="pt-2">
+                        <button
+                          onClick={() => {
+                            setActiveTab('chat');
+                            sendAutoResolveIssue('Run full multi-layer diagnostic and execute self-healing repair');
+                          }}
+                          className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors shadow-lg shadow-emerald-500/20"
+                        >
+                          <Zap className="w-4 h-4" />
+                          Execute Full Auto-Healing Routine
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="p-8 text-center text-slate-500">
+                      <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-slate-400" />
+                      Gathering multi-layer telemetry...
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 3: Learned Fixes & Strategy Scoring */}
+              {activeTab === 'learned' && (
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-900/50 text-xs">
+                  <div>
+                    <h4 className="font-semibold text-slate-100">Self-Learning Strategy Weights</h4>
+                    <p className="text-[11px] text-slate-400">Dynamic effectiveness ratings calculated from verified resolutions</p>
+                  </div>
+
+                  {/* Learned Weights */}
+                  {learnedData?.learnedWeights && Object.keys(learnedData.learnedWeights).length > 0 ? (
+                    <div className="space-y-2">
+                      {Object.entries(learnedData.learnedWeights).map(([action, stats]: [string, any]) => (
+                        <div key={action} className="bg-slate-950/70 border border-slate-800 rounded-xl p-2.5">
+                          <div className="flex items-center justify-between text-slate-200 font-medium">
+                            <span className="font-mono text-[11px] text-emerald-400">{action}</span>
+                            <span className="text-slate-300 font-bold">{stats.score}% Success Rate</span>
+                          </div>
+                          <div className="mt-1.5 w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                            <div
+                              className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                              style={{ width: `${Math.max(5, stats.score)}%` }}
+                            />
+                          </div>
+                          <div className="text-[10px] text-slate-500 mt-1 flex justify-between">
+                            <span>Attempts: {stats.attempts}</span>
+                            <span>Verified Fixes: {stats.successes}</span>
                           </div>
                         </div>
-                      )}
+                      ))}
                     </div>
-                    <span className="text-[10px] text-slate-500 mt-1 px-1">{msg.timestamp}</span>
+                  ) : (
+                    <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 text-center text-slate-400">
+                      <History className="w-6 h-6 text-slate-500 mx-auto mb-1.5" />
+                      <p>All strategies initialized at baseline weight (100%). Weights calibrate dynamically as fixes are executed.</p>
+                    </div>
+                  )}
+
+                  {/* Resolution History */}
+                  <div className="pt-2">
+                    <h5 className="font-semibold text-slate-200 mb-2 flex items-center gap-1.5">
+                      <History className="w-3.5 h-3.5 text-cyan-400" />
+                      Recent Resolution Logs
+                    </h5>
+                    {learnedData?.history && learnedData.history.length > 0 ? (
+                      <div className="space-y-2">
+                        {learnedData.history.slice(-4).reverse().map((item: any, idx: number) => (
+                          <div key={idx} className="bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5 text-[11px]">
+                            <div className="flex items-center justify-between">
+                              <span className="font-medium text-slate-200 truncate max-w-[240px]">{item.issue}</span>
+                              <span className={`text-[10px] px-1.5 py-0.2 rounded ${item.success ? 'bg-emerald-950 text-emerald-400' : 'bg-amber-950 text-amber-400'}`}>
+                                {item.success ? 'Success' : 'Escalated'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-1">
+                              Actions: {item.actions?.map((a: any) => a.action).join(' ➔ ')}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500 italic">No historical interventions recorded yet in this session.</p>
+                    )}
                   </div>
-                ))}
-
-                {isLoading && (
-                  <div className="flex items-center gap-2 p-2.5 bg-slate-800/60 border border-slate-700/50 rounded-xl text-xs text-slate-400 w-fit animate-pulse">
-                    <Sparkles className="w-4 h-4 text-emerald-400 animate-spin" />
-                    <span>Analyzing error telemetry and performing healing...</span>
-                  </div>
-                )}
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Quick Actions Bar */}
-              <div className="bg-slate-950/40 border-t border-slate-800 p-2 flex items-center gap-1.5 overflow-x-auto text-[11px]">
-                <button
-                  onClick={() => sendMessage('Check PostgreSQL and Neon database connection health')}
-                  className="whitespace-nowrap px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md border border-slate-700 transition-colors flex items-center gap-1"
-                >
-                  <Terminal className="w-3 h-3 text-emerald-400" />
-                  DB Health
-                </button>
-                <button
-                  onClick={() => sendMessage('Clear in-memory and Redis caches')}
-                  className="whitespace-nowrap px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md border border-slate-700 transition-colors flex items-center gap-1"
-                >
-                  <RefreshCw className="w-3 h-3 text-cyan-400" />
-                  Flush Cache
-                </button>
-                <button
-                  onClick={() => sendMessage('Perform full self-healing scan and diagnostics')}
-                  className="whitespace-nowrap px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-md border border-slate-700 transition-colors flex items-center gap-1"
-                >
-                  <Wrench className="w-3 h-3 text-amber-400" />
-                  Self-Heal All
-                </button>
-              </div>
-
-              {/* Input Footer */}
-              <div className="p-3 bg-slate-900 border-t border-slate-800 flex items-center gap-2">
-                <input
-                  id="input-support-chat-message"
-                  type="text"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-                  placeholder="Describe your issue or paste error..."
-                  disabled={isLoading}
-                  className="flex-1 bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition-colors"
-                />
-                <button
-                  id="btn-send-support-message"
-                  onClick={() => sendMessage()}
-                  disabled={isLoading || !input.trim()}
-                  className="p-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl transition-colors shrink-0"
-                >
-                  <Send className="w-4 h-4" />
-                </button>
-              </div>
+                </div>
+              )}
             </>
           )}
         </div>

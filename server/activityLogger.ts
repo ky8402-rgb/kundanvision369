@@ -1,8 +1,8 @@
 export interface ActivityLogEntry {
   id: string;
   timestamp: string;
-  source: 'PayPal' | 'RemoteOK' | 'WeWorkRemotely' | 'FlexJobs' | 'Razorpay' | 'Indian Bank' | 'Gemini AI' | 'System' | string;
-  type: 'WEBHOOK_INCOMING' | 'FEED_SYNC' | 'BID_SUBMISSION' | 'ORDER_STATE_SYNC' | 'PAYMENT_RECEIVED' | 'BANK_AUTO_TRANSFER' | 'AI_PROPOSAL_GEN' | 'AUTH_HANDSHAKE';
+  source: 'PayPal' | 'RemoteOK' | 'WeWorkRemotely' | 'FlexJobs' | 'Razorpay' | 'Indian Bank' | 'Gemini AI' | 'System' | 'PostgreSQL Backup' | string;
+  type: 'WEBHOOK_INCOMING' | 'FEED_SYNC' | 'BID_SUBMISSION' | 'ORDER_STATE_SYNC' | 'PAYMENT_RECEIVED' | 'BANK_AUTO_TRANSFER' | 'AI_PROPOSAL_GEN' | 'AUTH_HANDSHAKE' | 'DATABASE_SNAPSHOT_CREATED' | 'SNAPSHOT_PRUNED' | 'DISASTER_RECOVERY_RESTORED' | 'SNAPSHOT_VERIFIED' | string;
   status: 'success' | 'warning' | 'error' | 'info';
   method: 'POST' | 'GET' | 'PUT' | 'DELETE' | 'WS' | 'INTERNAL';
   endpoint: string;
@@ -16,7 +16,7 @@ export interface ActivityLogEntry {
   responsePayload?: any;
   stateDiff?: {
     action: string;
-    entityType?: 'work_order' | 'transaction' | 'balance' | 'feed_job' | 'proposal';
+    entityType?: 'work_order' | 'transaction' | 'balance' | 'feed_job' | 'proposal' | 'snapshot' | 'database' | string;
     entityId?: string | number;
     amountUsd?: number;
     amountInr?: number;

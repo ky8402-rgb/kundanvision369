@@ -21,11 +21,13 @@ import { fetchSystemHealth, SystemHealthStatus } from '../services/api';
 
 interface SystemHealthConnectivityCardProps {
   onOpenSettings?: () => void;
+  onNavigateToSnapshots?: () => void;
   className?: string;
 }
 
 export const SystemHealthConnectivityCard: React.FC<SystemHealthConnectivityCardProps> = ({
   onOpenSettings,
+  onNavigateToSnapshots,
   className = ''
 }) => {
   const [health, setHealth] = useState<SystemHealthStatus | null>(null);
@@ -349,18 +351,36 @@ export const SystemHealthConnectivityCard: React.FC<SystemHealthConnectivityCard
 
           {/* Footer note & settings link */}
           <div className="flex flex-wrap items-center justify-between gap-2 pt-2 text-xs text-slate-400 border-t border-slate-800/60">
-            <span className="flex items-center gap-1.5 text-slate-400">
-              <Radio className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
-              Automated deployment pipeline synced with GitHub & Render
-            </span>
-            {onOpenSettings && (
-              <button
-                onClick={onOpenSettings}
-                className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                Configure API Credentials & Webhooks →
-              </button>
-            )}
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="flex items-center gap-1.5 text-slate-400">
+                <Radio className="h-3.5 w-3.5 text-emerald-400 animate-pulse" />
+                Automated deployment pipeline synced with GitHub & Render
+              </span>
+              <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                <Database className="h-3 w-3" />
+                Daily PostgreSQL Snapshots (3-Max Retention)
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {onNavigateToSnapshots && (
+                <button
+                  onClick={onNavigateToSnapshots}
+                  className="text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Database className="h-3.5 w-3.5" />
+                  Database Snapshots &amp; Recovery →
+                </button>
+              )}
+              {onOpenSettings && (
+                <button
+                  onClick={onOpenSettings}
+                  className="text-xs font-semibold text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  API Credentials →
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}

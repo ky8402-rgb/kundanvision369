@@ -2507,6 +2507,123 @@ export function handleIncomingGigWebhook(
   return gigWebhookDispatcher.handleIncomingWebhook(payload);
 }
 
+// =========================================================================
+// PostgreSQL Database Snapshot & Disaster Recovery API Client
+// =========================================================================
+
+export interface DatabaseSnapshotItem {
+  id: string;
+  timestamp: string;
+  trigger: 'DAILY_SCHEDULE' | 'MANUAL_TRIGGER' | 'PRE_DEPLOYMENT' | 'DISASTER_RECOVERY_POINT';
+  status: 'SUCCESS' | 'FAILED' | 'RESTORING';
+  sizeBytes: number;
+  sizeFormatted: string;
+  checksum: string;
+  tables: {
+    users: number;
+    transactions: number;
+    paypalOrders: number;
+    workOrders: number;
+    proposals: number;
+    bids: number;
+  };
+  totalRecords: number;
+  durationMs: number;
+  storageLocation: string;
+  metadata: {
+    dbProvider: string;
+    nodeVersion: string;
+    schemaVersion: string;
+    retentionSlot: number;
+  };
+}
+
+export interface SnapshotStatusResponse {
+  success: boolean;
+  service: string;
+  status: string;
+  retentionPolicy: {
+    maxSuccessfulBackups: number;
+    activeBackupsCount: number;
+    policyDescription: string;
+  };
+  schedule: {
+    frequency: string;
+    nextRun: string;
+    timeUntilNextRunMs: number;
+    lastRun: string | null;
+  };
+  backups: DatabaseSnapshotItem[];
+  totalSnapshotsRecorded: number;
+}
+
+export async function fetchDatabaseSnapshots(): Promise<SnapshotStatusResponse | null> {
+  try {
+    const res = await secureFetch('/api/db/snapshots');
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (err) {
+    console.warn('[SnapshotAPI] Failed to fetch snapshots:', err);
+    return null;
+  }
+}
+
+export async function triggerDatabaseSnapshot(notes?: string): Promise<{
+  success: boolean;
+  message?: string;
+  snapshot?: DatabaseSnapshotItem;
+  retainedBackups?: DatabaseSnapshotItem[];
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/db/snapshots/trigger', {
+      method: 'POST',
+      body: JSON.stringify({ trigger: 'MANUAL_TRIGGER', notes })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Network error triggering snapshot' };
+  }
+}
+
+export async function restoreDatabaseSnapshot(snapshotId: string, dryRun = false): Promise<{
+  success: boolean;
+  restoredSnapshotId?: string;
+  dryRun?: boolean;
+  recordsRestored?: any;
+  totalRecords?: number;
+  durationMs?: number;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/db/snapshots/restore', {
+      method: 'POST',
+      body: JSON.stringify({ snapshotId, dryRun })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to restore snapshot' };
+  }
+}
+
+export async function verifyDatabaseSnapshot(snapshotId: string): Promise<{
+  success: boolean;
+  verified?: boolean;
+  details?: any;
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch(`/api/db/snapshots/verify/${encodeURIComponent(snapshotId)}`, {
+      method: 'POST'
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Verification failed' };
+  }
+}
+
+
 
 
 
