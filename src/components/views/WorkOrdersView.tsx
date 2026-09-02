@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { WorkOrder } from '../../App';
 import type { FreelanceJob } from '../../types';
+import { WorkOrderTimeline } from '../WorkOrderTimeline';
 
 interface WorkOrdersViewProps {
   workOrders: WorkOrder[];
@@ -370,6 +371,17 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                         <i className="fas fa-check-circle text-[#2ecc71]"></i> Completed &amp; Paid
                       </span>
                     )}
+                  </div>
+
+                  {/* Visual Lifecycle Timeline: Pending -> In-Progress -> Escrow Released -> Completed */}
+                  <div className="w-full pt-2">
+                    <WorkOrderTimeline
+                      status={order.status}
+                      paymentStatus={(order as any).payment_status}
+                      customerConfirmed={(order as any).customer_confirmed}
+                      workerMarkedComplete={(order as any).worker_marked_complete}
+                      completedAt={order.completed_at}
+                    />
                   </div>
                 </div>
               );

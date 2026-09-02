@@ -15,6 +15,7 @@ import { WithdrawalSummary } from './components/WithdrawalSummary';
 import { SystemHealthConnectivityCard } from './components/SystemHealthConnectivityCard';
 import { FreelancerMetricsSection } from './components/FreelancerMetricsSection';
 import { SupportChat } from './components/SupportChat';
+import { WorkOrderTimeline } from './components/WorkOrderTimeline';
 
 // Secondary Tabs & Modals (Safe Lazy Loading with explicit typed named exports)
 const PlatformCredentialsModal = lazy(() => import('./components/PlatformCredentialsModal').then(m => ({ default: m.PlatformCredentialsModal })));
@@ -1938,109 +1939,122 @@ export default function App() {
                       workOrders.filter(o => o.status !== 'completed').map((order, idx) => (
                         <div
                           key={`wo-act-${order.id || idx}-${idx}`}
-                          className={`flex flex-wrap items-center justify-between p-3.5 bg-[#11141f] rounded-xl border-l-4 ${
+                          className={`flex flex-col p-3.5 bg-[#11141f] rounded-xl border-l-4 ${
                             order.platform === 'RemoteOK'
                               ? 'border-purple-500 hover:border-purple-400'
                               : 'border-[#4f7cff] hover:border-blue-400'
                           } hover:bg-[#1e2438] transition-all gap-3`}
                         >
-                          <div className="space-y-1 max-w-sm">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-semibold text-sm text-white">{order.title}</span>
-                              {order.platform === 'RemoteOK' && (
-                                <span className="text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                                  RemoteOK
-                                </span>
-                              )}
+                          <div className="flex flex-wrap items-center justify-between gap-3 w-full">
+                            <div className="space-y-1 max-w-sm">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-sm text-white">{order.title}</span>
+                                {order.platform === 'RemoteOK' && (
+                                  <span className="text-[9px] uppercase font-mono font-bold px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                    RemoteOK
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-[#5d6788] flex flex-wrap items-center gap-3">
+                                <span><i className="fas fa-building mr-1 text-[10px]"></i>{order.category}</span>
+                                <span><i className="far fa-clock mr-1 text-[10px]"></i>{order.time}</span>
+                                {order.url && order.url !== '#' && (
+                                  <a
+                                    href={order.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-purple-400 hover:underline inline-flex items-center gap-0.5 text-[11px]"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    Open <i className="fas fa-external-link-alt text-[9px]"></i>
+                                  </a>
+                                )}
+                              </div>
                             </div>
-                            <div className="text-xs text-[#5d6788] flex flex-wrap items-center gap-3">
-                              <span><i className="fas fa-building mr-1 text-[10px]"></i>{order.category}</span>
-                              <span><i className="far fa-clock mr-1 text-[10px]"></i>{order.time}</span>
-                              {order.url && order.url !== '#' && (
-                                <a
-                                  href={order.url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-purple-400 hover:underline inline-flex items-center gap-0.5 text-[11px]"
-                                  onClick={(e) => e.stopPropagation()}
+
+                            <div className="flex items-center gap-2.5">
+                              {editingOrderId === order.id ? (
+                                <div className="flex items-center gap-1.5 bg-[#0b0d15] p-1 rounded-lg border border-[#4f7cff]">
+                                  <input
+                                    type="number"
+                                    autoFocus
+                                    value={editingAmountValue}
+                                    onChange={(e) => setEditingAmountValue(e.target.value)}
+                                    placeholder="USD"
+                                    className="w-16 bg-transparent text-xs font-mono text-white px-1.5 py-0.5 focus:outline-none"
+                                  />
+                                  <button
+                                    onClick={() => saveCustomAmount(order.id)}
+                                    className="text-[#2ecc71] hover:text-emerald-300 p-1 text-xs"
+                                    title="Save Amount"
+                                  >
+                                    <i className="fas fa-check"></i>
+                                  </button>
+                                  <button
+                                    onClick={() => setEditingOrderId(null)}
+                                    className="text-slate-400 hover:text-white p-1 text-xs"
+                                    title="Cancel"
+                                  >
+                                    <i className="fas fa-times"></i>
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`font-mono font-bold text-sm ${order.amount === 0 ? 'text-[#f39c12]' : 'text-white'}`}>
+                                    {order.amount === 0 ? 'Quote Pending' : `$${fmt(order.amount)} USD`}
+                                  </span>
+                                  <button
+                                    onClick={() => {
+                                      setEditingOrderId(order.id);
+                                      setEditingAmountValue(order.amount ? String(order.amount) : '250');
+                                    }}
+                                    className="text-[#5d6788] hover:text-[#4f7cff] text-[11px] p-1"
+                                    title="Edit/Set Contract Rate"
+                                  >
+                                    <i className="fas fa-pencil-alt"></i>
+                                  </button>
+                                </div>
+                              )}
+
+                              <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                                order.status === 'in-progress'
+                                  ? 'bg-[rgba(79,124,255,0.18)] text-[#4f7cff] border border-[#4f7cff]/30'
+                                  : order.status === 'urgent'
+                                  ? 'bg-[rgba(231,76,60,0.18)] text-[#e74c3c] border border-[#e74c3c]/30'
+                                  : 'bg-[rgba(243,156,18,0.18)] text-[#f39c12] border border-[#f39c12]/30'
+                              }`}>
+                                {order.status}
+                              </span>
+
+                              {order.status === 'pending' ? (
+                                <button
+                                  onClick={() => acceptOrder(order.id)}
+                                  className="text-blue-400 hover:text-white bg-blue-600/20 hover:bg-blue-600 p-1.5 rounded-lg text-xs transition-all cursor-pointer"
+                                  title="Accept Contract into Queue"
                                 >
-                                  Open <i className="fas fa-external-link-alt text-[9px]"></i>
-                                </a>
+                                  <i className="fas fa-play"></i>
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => completeOrder(order.id)}
+                                  className="text-[#5d6788] hover:text-[#2ecc71] p-1.5 hover:bg-[#161b2b] rounded-lg transition-all cursor-pointer"
+                                  title="Mark Complete & Release Escrow"
+                                >
+                                  <i className="fas fa-check-circle text-base"></i>
+                                </button>
                               )}
                             </div>
                           </div>
 
-                          <div className="flex items-center gap-2.5">
-                            {editingOrderId === order.id ? (
-                              <div className="flex items-center gap-1.5 bg-[#0b0d15] p-1 rounded-lg border border-[#4f7cff]">
-                                <input
-                                  type="number"
-                                  autoFocus
-                                  value={editingAmountValue}
-                                  onChange={(e) => setEditingAmountValue(e.target.value)}
-                                  placeholder="USD"
-                                  className="w-16 bg-transparent text-xs font-mono text-white px-1.5 py-0.5 focus:outline-none"
-                                />
-                                <button
-                                  onClick={() => saveCustomAmount(order.id)}
-                                  className="text-[#2ecc71] hover:text-emerald-300 p-1 text-xs"
-                                  title="Save Amount"
-                                >
-                                  <i className="fas fa-check"></i>
-                                </button>
-                                <button
-                                  onClick={() => setEditingOrderId(null)}
-                                  className="text-slate-400 hover:text-white p-1 text-xs"
-                                  title="Cancel"
-                                >
-                                  <i className="fas fa-times"></i>
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="flex items-center gap-1.5">
-                                <span className={`font-mono font-bold text-sm ${order.amount === 0 ? 'text-[#f39c12]' : 'text-white'}`}>
-                                  {order.amount === 0 ? 'Quote Pending' : `$${fmt(order.amount)} USD`}
-                                </span>
-                                <button
-                                  onClick={() => {
-                                    setEditingOrderId(order.id);
-                                    setEditingAmountValue(order.amount ? String(order.amount) : '250');
-                                  }}
-                                  className="text-[#5d6788] hover:text-[#4f7cff] text-[11px] p-1"
-                                  title="Edit/Set Contract Rate"
-                                >
-                                  <i className="fas fa-pencil-alt"></i>
-                                </button>
-                              </div>
-                            )}
-
-                            <span className={`text-[10px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                              order.status === 'in-progress'
-                                ? 'bg-[rgba(79,124,255,0.18)] text-[#4f7cff] border border-[#4f7cff]/30'
-                                : order.status === 'urgent'
-                                ? 'bg-[rgba(231,76,60,0.18)] text-[#e74c3c] border border-[#e74c3c]/30'
-                                : 'bg-[rgba(243,156,18,0.18)] text-[#f39c12] border border-[#f39c12]/30'
-                            }`}>
-                              {order.status}
-                            </span>
-
-                            {order.status === 'pending' ? (
-                              <button
-                                onClick={() => acceptOrder(order.id)}
-                                className="text-blue-400 hover:text-white bg-blue-600/20 hover:bg-blue-600 p-1.5 rounded-lg text-xs transition-all"
-                                title="Accept Contract into Queue"
-                              >
-                                <i className="fas fa-play"></i>
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => completeOrder(order.id)}
-                                className="text-[#5d6788] hover:text-[#2ecc71] p-1.5 hover:bg-[#161b2b] rounded-lg transition-all"
-                                title="Mark Complete & Release Escrow"
-                              >
-                                <i className="fas fa-check-circle text-base"></i>
-                              </button>
-                            )}
+                          {/* Visual Lifecycle Timeline: Pending -> In-Progress -> Escrow Released -> Completed */}
+                          <div className="w-full pt-1">
+                            <WorkOrderTimeline
+                              status={order.status}
+                              paymentStatus={(order as any).payment_status}
+                              customerConfirmed={(order as any).customer_confirmed}
+                              workerMarkedComplete={(order as any).worker_marked_complete}
+                              completedAt={order.completed_at}
+                            />
                           </div>
                         </div>
                       ))
