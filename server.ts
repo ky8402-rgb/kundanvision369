@@ -48,6 +48,7 @@ import { clearBidsCache, apiCacheMiddleware, getCacheStats } from "./server/redi
 import { selfHealer, supportSystem, metricsRegistry, predictiveHealer } from "./server/selfHealing.js";
 import { diagnosticEngine, advancedResolutionEngine } from "./server/diagnosticEngine.js";
 import { snapshotService, MAX_SUCCESSFUL_BACKUPS } from "./server/snapshotService.js";
+import { getPayPalConfig } from "./server/paypal.js";
 import {
   proposalGenerationQueue,
   reportProcessingQueue,
@@ -60,6 +61,36 @@ import {
   getAllLiveOrders,
   completeLiveOrder
 } from "./server/platformIntegrations.js";
+import {
+  runFullHealthCheck,
+  checkDatabase,
+  checkCronJob,
+  checkPayPalConnectivity,
+  checkFreelancerConnectivity,
+  checkQueueHealth,
+  checkWorkOrders,
+  checkTransactions,
+  recordCronHeartbeat
+} from "./server/healthCheck.js";
+import { checkAndAutoApproveOverdueWorkOrders } from "./server/completionWorker.js";
+import { processRetryQueue, runSelfHealingDiagnostics } from "./server/retryWorker.js";
+import { githubRoutes } from "./server/githubRoutes.js";
+import { scanAndRetryMissingExternalJobs } from "./server/freelancerRetryQueue.js";
+import { autoHealer } from "./server/autoHealer.js";
+import { autoRemediate } from "./server/remediation.js";
+import { mlClient } from "./server/mlClient.js";
+import { startMLWorker } from "./server/mlWorker.js";
+import { registerMLPredictor } from "./server/healthCheck.js";
+import { getMLModels, getMLFeedback } from "./server/pgDatabase.js";
+
+// Register ML predictor with health check engine
+registerMLPredictor(async (health) => {
+  const features = mlClient.extractFeatures(health);
+  return await mlClient.predict(features);
+});
+
+// Start self-updating ML background retraining & drift monitoring worker
+startMLWorker();
 
 const app = express();
 const PORT = 3000;
@@ -280,6 +311,9 @@ app.use("/api/neon", neonRoutes);
 // 10. Autonomous Auto-Dispatch, Work Orders, PayPal Payouts & Self-Healing Routes
 app.use("/api", autoDispatchRoutes);
 
+// 11. GitHub SSH Key Management & Push/Pull Operations
+app.use("/api/github", githubRoutes);
+
 // Compatibility aliases for /api/bids, /api/bids/stats, and /api/leads list
 app.use("/api/bids", freelancerBidsRoutes);
 
@@ -349,61 +383,57 @@ app.post("/api/webhooks/gig", express.json(), (req, res) => {
   }
 });
 
-// Comprehensive Health & Connectivity Check Endpoint
+// Lightweight Liveness / Ping Endpoint for Render & External Monitors
+app.get("/api/health/ping", (req, res) => {
+  res.status(200).json({ status: "ok", uptime: Math.floor(process.uptime()), timestamp: new Date().toISOString() });
+});
+
+// Unified System Health Check Endpoint (GET /api/health)
 app.get("/api/health", async (req, res) => {
   const startTime = Date.now();
   try {
-    // 1. Check database connectivity
-    const dbStatus = await checkDatabaseConnection().catch((err: any) => ({
-      connected: false,
-      type: 'PostgreSQL (Cloud SQL / Supabase)',
-      latencyMs: 0,
-      provider: 'PostgreSQL',
-      message: err?.message || 'Database connection check failed',
-      stats: { users: 0, transactions: 0, workOrders: 0, paypalOrders: 0 }
-    }));
+    const fullCheck = await runFullHealthCheck();
 
-    // 2. Check SQLite bids database
+    // Additional telemetry metadata for backward-compatibility with UI modules
+    const geminiKey = process.env.GEMINI_API_KEY || '';
+    const hasGemini = Boolean(geminiKey && geminiKey.trim().length > 0);
+    const payPalCfg = getPayPalConfig();
+    const payPalEmail = payPalCfg.receiverEmail;
+    const payPalMe = payPalCfg.paypalMeUsername;
+    const payPalClientId = payPalCfg.clientId;
+    const payPalSecret = payPalCfg.clientSecret;
+    const payPalMode = payPalCfg.mode;
+    const hasPayPalCredentials = Boolean(payPalClientId && payPalSecret);
+    const freelancerToken = process.env.FREELANCER_ACCESS_TOKEN || '';
+    const hasFreelancer = Boolean(freelancerToken && freelancerToken.trim().length > 0);
     const sqlitePath = path.join(process.cwd(), 'bids.db');
     const sqliteExists = fs.existsSync(sqlitePath);
 
-    // 3. Check API Keys & Integrations configuration
-    const geminiKey = process.env.GEMINI_API_KEY || '';
-    const hasGemini = Boolean(geminiKey && geminiKey.trim().length > 0);
-
-    const payPalEmail = process.env.PAYPAL_RECEIVER_EMAIL || 'kundank4@icloud.com';
-    const payPalMe = process.env.PAYPAL_ME_USERNAME || 'ky8402';
-    const payPalClientId = process.env.PAYPAL_CLIENT_ID || '';
-    const payPalSecret = process.env.PAYPAL_CLIENT_SECRET || '';
-    const payPalMode = process.env.PAYPAL_MODE || 'live';
-    const hasPayPalCredentials = Boolean(payPalClientId && payPalSecret);
-
-    const freelancerToken = process.env.FREELANCER_ACCESS_TOKEN || '';
-    const hasFreelancer = Boolean(freelancerToken && freelancerToken.trim().length > 0);
-
-    const telegramToken = process.env.TELEGRAM_BOT_TOKEN || '';
-    const hasTelegram = Boolean(telegramToken && telegramToken.trim().length > 0);
-
-    const jwtSecret = process.env.JWT_SECRET || '';
-    const hasJwt = Boolean(jwtSecret && jwtSecret.trim().length > 0);
-
-    const isFullyHealthy = dbStatus.connected && hasGemini && hasPayPalCredentials;
-
     const responsePayload = {
-      status: isFullyHealthy ? 'healthy' : (dbStatus.connected || hasGemini || hasFreelancer ? 'operational' : 'degraded'),
-      timestamp: new Date().toISOString(),
+      // Primary contract requested by specification
+      status: fullCheck.status,
+      timestamp: fullCheck.timestamp,
+      checks: fullCheck.checks,
+      remediation: fullCheck.remediation,
+
+      // Enhanced telemetry for deep observability & existing dashboard cards
       uptimeSeconds: Math.floor(process.uptime()),
       responseTimeMs: Date.now() - startTime,
       environment: process.env.NODE_ENV || 'development',
-      version: '2.8.0-ai-autonomous',
+      version: '3.0.0-devops-unified-health',
       database: {
-        status: dbStatus.connected ? 'connected' : 'in-memory-fallback',
-        connected: dbStatus.connected,
-        type: dbStatus.type,
-        provider: dbStatus.provider,
-        latencyMs: dbStatus.latencyMs,
-        message: dbStatus.message,
-        stats: dbStatus.stats
+        status: fullCheck.checks.database.status === 'healthy' ? 'connected' : fullCheck.checks.database.status,
+        connected: fullCheck.checks.database.status !== 'critical',
+        type: fullCheck.checks.database.provider || 'PostgreSQL (Neon)',
+        provider: 'Neon / PostgreSQL',
+        latencyMs: fullCheck.checks.database.latencyMs,
+        message: fullCheck.checks.database.message || 'Database healthy',
+        stats: {
+          users: fullCheck.checks.database.tables?.users || 0,
+          transactions: fullCheck.checks.database.tables?.transactions || 0,
+          workOrders: fullCheck.checks.database.tables?.workOrders || 0,
+          jobs: fullCheck.checks.database.tables?.jobs || 0,
+        }
       },
       sqlite: {
         status: sqliteExists ? 'active' : 'ready',
@@ -421,7 +451,7 @@ app.get("/api/health", async (req, res) => {
         paypal: {
           name: 'PayPal Merchant Gateway',
           configured: true,
-          status: hasPayPalCredentials ? 'active' : 'ready-with-direct-payout',
+          status: fullCheck.checks.paypal.status === 'healthy' ? 'active' : 'degraded',
           mode: payPalMode,
           receiverEmail: payPalEmail,
           payPalMeUsername: payPalMe,
@@ -433,39 +463,238 @@ app.get("/api/health", async (req, res) => {
         freelancer: {
           name: 'Freelancer.com Platform API',
           configured: hasFreelancer,
-          status: hasFreelancer ? 'active' : 'ready-with-portal-bridge',
+          status: fullCheck.checks.freelancer.status === 'healthy' ? 'active' : 'degraded',
           preview: hasFreelancer ? `${freelancerToken.slice(0, 4)}...${freelancerToken.slice(-4)}` : null,
           role: 'Automated Job Discovery & Bid Submissions'
         },
         telegram: {
           name: 'Telegram Bot Alerts',
-          configured: hasTelegram,
-          status: hasTelegram ? 'active' : 'disabled',
+          configured: Boolean(process.env.TELEGRAM_BOT_TOKEN),
+          status: process.env.TELEGRAM_BOT_TOKEN ? 'active' : 'disabled',
           role: 'Real-time Won Bid & Lead Notifications'
         },
         jwt: {
           name: 'JWT Authentication',
-          configured: hasJwt,
+          configured: Boolean(process.env.JWT_SECRET),
           status: 'active',
           role: 'Session Management & Security'
         }
       },
       summary: {
-        allSystemsReady: true,
-        activeServicesCount: [dbStatus.connected, sqliteExists, hasGemini, true, hasFreelancer].filter(Boolean).length,
-        totalServicesCount: 5
+        allSystemsReady: fullCheck.status === 'healthy',
+        activeServicesCount: [
+          fullCheck.checks.database.status === 'healthy',
+          fullCheck.checks.cron.status === 'healthy',
+          fullCheck.checks.paypal.status === 'healthy',
+          fullCheck.checks.freelancer.status === 'healthy',
+          fullCheck.checks.queues.status === 'healthy'
+        ].filter(Boolean).length,
+        totalServicesCount: 7
       },
-      selfHealing: await selfHealer.checkHealth()
+      selfHealing: await selfHealer.checkHealth(),
+      autoHealer: autoHealer.getStatus(),
+      mlAIOps: mlClient.getStatus(),
+      predictiveML: fullCheck.predictiveML,
     };
 
-    return res.status(200).json(responsePayload);
+    const httpStatusCode = fullCheck.status === 'critical' ? 503 : 200;
+    return res.status(httpStatusCode).json(responsePayload);
   } catch (err: any) {
     console.error("[/api/health] Health check failed:", err);
     return res.status(500).json({
-      status: 'error',
+      status: 'critical',
       timestamp: new Date().toISOString(),
-      error: err?.message || 'Failed to inspect system connectivity'
+      error: err?.message || 'Failed to inspect system connectivity',
+      remediation: 'Restart backend service and check environment variables.'
     });
+  }
+});
+
+// Self-Healing Trigger Endpoint: Remediate any detected anomalies
+app.post("/api/health/remediate", async (req, res) => {
+  try {
+    console.log("🛠️ [HealthCheck Remediation] Running autonomous self-healing trigger...");
+    const remediationRes = await autoRemediate('api_health_remediate');
+
+    return res.json({
+      success: remediationRes.success,
+      message: 'Self-healing remediation completed successfully.',
+      remediationResults: {
+        autoApprovedOrders: remediationRes.autoApprovedOrders,
+        processedPayoutRetries: remediationRes.processedPayoutRetries,
+        succeededPayoutRetries: remediationRes.succeededPayoutRetries,
+        freelancerRetriedCount: remediationRes.freelancerRetriedCount,
+        diagnostics: remediationRes.diagnostics,
+        actionsTaken: remediationRes.actionsTaken,
+      },
+      health: remediationRes.health,
+    });
+  } catch (err: any) {
+    console.error("❌ [/api/health/remediate] Remediation failed:", err);
+    return res.status(500).json({
+      success: false,
+      error: err.message || 'Failed to execute self-healing remediation',
+    });
+  }
+});
+
+// Auto-Healer DevOps Telemetry & Control Endpoints
+app.get("/api/health/auto-heal/status", (req, res) => {
+  try {
+    const status = autoHealer.getStatus();
+    return res.json({
+      success: true,
+      status,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/health/auto-heal/logs", async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const logs = await autoHealer.getLogs(limit);
+    return res.json({
+      success: true,
+      count: logs.length,
+      logs,
+      timestamp: new Date().toISOString()
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/health/auto-heal/toggle", (req, res) => {
+  try {
+    const { enabled } = req.body || {};
+    const updatedStatus = autoHealer.toggle(Boolean(enabled));
+    return res.json({
+      success: true,
+      message: `Auto-healer ${updatedStatus.enabled ? 'activated' : 'paused'}.`,
+      status: updatedStatus,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/health/auto-heal/trigger", async (req, res) => {
+  try {
+    console.log("⚡ [/api/health/auto-heal/trigger] Manual self-healing cycle initiated...");
+    const cycleResult = await autoHealer.runSelfHealingCycle(true);
+    return res.json({
+      success: true,
+      message: 'Self-healing cycle executed.',
+      result: cycleResult,
+      status: autoHealer.getStatus(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// =========================================================================
+// PREDICTIVE MACHINE LEARNING AIOPS ENDPOINTS
+// =========================================================================
+app.get("/api/ml/status", (req, res) => {
+  try {
+    const status = mlClient.getStatus();
+    return res.json({
+      success: true,
+      status,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/ml/predict", async (req, res) => {
+  try {
+    const features = req.body || {};
+    const prediction = await mlClient.predict(features);
+    return res.json({
+      success: true,
+      prediction,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/ml/train", async (req, res) => {
+  try {
+    const { forceDeploy, versionTag } = req.body || {};
+    console.log(`🧠 [/api/ml/train] Triggering ML training (forceDeploy: ${forceDeploy}, version: ${versionTag || 'auto'})...`);
+    const trainResult = await mlClient.trainModel(Boolean(forceDeploy), versionTag);
+    return res.json({
+      success: true,
+      message: trainResult.deployed ? 'Model successfully retrained and deployed to production!' : 'Model evaluated; preserved existing active model.',
+      result: trainResult,
+      status: mlClient.getStatus(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/api/ml/rollback", async (req, res) => {
+  try {
+    console.log("🔄 [/api/ml/rollback] Rolling back ML model to previous version...");
+    const rollbackResult = await mlClient.rollbackModel();
+    if (!rollbackResult.success) {
+      return res.status(400).json({ success: false, error: rollbackResult.error || 'Rollback failed' });
+    }
+    return res.json({
+      success: true,
+      message: `Rolled back to model ${rollbackResult.active_version || rollbackResult.activeVersion}`,
+      result: rollbackResult,
+      status: mlClient.getStatus(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/ml/models", async (req, res) => {
+  try {
+    const models = await getMLModels();
+    return res.json({
+      success: true,
+      activeVersion: mlClient.getStatus().active_model_version,
+      count: models.length,
+      models,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/ml/feedback", async (req, res) => {
+  try {
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
+    const feedback = await getMLFeedback(limit);
+    return res.json({
+      success: true,
+      count: feedback.length,
+      feedback,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get("/api/ml/metrics", async (req, res) => {
+  try {
+    const metricsText = await mlClient.getPrometheusMetrics();
+    res.setHeader("Content-Type", "text/plain; version=0.0.4");
+    return res.send(metricsText);
+  } catch (err: any) {
+    return res.status(500).send(`# Error generating ML metrics: ${err.message}`);
   }
 });
 

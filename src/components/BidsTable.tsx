@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { BackendBidItem, BACKEND_BASE_URL, withdrawOnFreelancer, updateBidStatus, generateAIProposalBackend } from '../services/api';
 import { formatPackageName } from './PackageChart';
 
@@ -476,6 +476,12 @@ export const BidsTable: React.FC<BidsTableProps> = ({
     copied: false,
   });
 
+  // Keep stable ref for onBidsLoaded callback to prevent re-fetch loop
+  const onBidsLoadedRef = useRef(onBidsLoaded);
+  useEffect(() => {
+    onBidsLoadedRef.current = onBidsLoaded;
+  }, [onBidsLoaded]);
+
   // Real-time 60-second ticker for accurate countdown tracking
   useEffect(() => {
     const timer = setInterval(() => {
@@ -499,7 +505,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
       const rawList: BackendBidItem[] = Array.isArray(data) ? data : (data.bids || []);
       setBids(rawList);
       setLastUpdated(new Date());
-      if (onBidsLoaded) onBidsLoaded(rawList);
+      if (onBidsLoadedRef.current) onBidsLoadedRef.current(rawList);
     } catch (err: any) {
       console.warn('[BidsTable] Backend fetch failed, trying local fallback:', err);
       try {
@@ -510,7 +516,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
           if (list.length > 0) {
             setBids(list);
             setLastUpdated(new Date());
-            if (onBidsLoaded) onBidsLoaded(list);
+            if (onBidsLoadedRef.current) onBidsLoadedRef.current(list);
             setLoading(false);
             return;
           }
@@ -520,7 +526,7 @@ export const BidsTable: React.FC<BidsTableProps> = ({
     } finally {
       setLoading(false);
     }
-  }, [onBidsLoaded]);
+  }, []);
 
   // Initial fetch and external refresh
   useEffect(() => {

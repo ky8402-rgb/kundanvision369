@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { getPgPool, memoryStore, WorkOrder, Transaction, User, Job } from './pgDatabase.js';
 import { createPayPalPayout } from './paypal.js';
 import { logActivityEvent } from './activityLogger.js';
+import { recordCronHeartbeat } from './healthCheck.js';
 
 export interface CompletionResult {
   success: boolean;
@@ -231,6 +232,7 @@ export async function checkAndAutoApproveOverdueWorkOrders(): Promise<{
   autoApprovedCount: number;
   approvedIds: string[];
 }> {
+  recordCronHeartbeat('auto_completion_worker');
   const pool = getPgPool();
   const now = new Date();
   const approvedIds: string[] = [];

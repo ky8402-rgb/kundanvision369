@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import type { WorkOrder } from '../../App';
 import type { FreelanceJob } from '../../types';
 import { WorkOrderTimeline } from '../WorkOrderTimeline';
@@ -58,6 +58,11 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
   const [now, setNow] = useState<number>(Date.now());
   const [pollingActive, setPollingActive] = useState<boolean>(true);
 
+  const onSyncRemoteOKRef = useRef(onSyncRemoteOK);
+  useEffect(() => {
+    onSyncRemoteOKRef.current = onSyncRemoteOK;
+  }, [onSyncRemoteOK]);
+
   // 1. Ticking timer every 1000ms for continuous real-time countdown updates
   useEffect(() => {
     const timer = setInterval(() => {
@@ -70,10 +75,10 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
   useEffect(() => {
     if (!pollingActive) return;
     const pollInterval = setInterval(() => {
-      onSyncRemoteOK();
+      onSyncRemoteOKRef.current?.();
     }, 5000);
     return () => clearInterval(pollInterval);
-  }, [pollingActive, onSyncRemoteOK]);
+  }, [pollingActive]);
 
   const handleSaveAmount = (orderId: string | number) => {
     const val = parseFloat(editingAmountValue);

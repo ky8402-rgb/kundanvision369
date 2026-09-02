@@ -6,6 +6,7 @@ import { getGeminiAI } from './gemini.js';
 import { clearBidsCache } from './redisCache.js';
 import { runSelfHealingDiagnostics } from './retryWorker.js';
 import { scanAndRetryMissingExternalJobs } from './freelancerRetryQueue.js';
+import { recordCronHeartbeat } from './healthCheck.js';
 
 console.log('🚀 [GigPilot Background Worker] Initialized and running...');
 
@@ -133,6 +134,7 @@ cron.schedule('0 * * * *', () => {
 // Self-healing check & missing external jobs retry every 30 seconds
 cron.schedule('*/30 * * * * *', async () => {
   try {
+    recordCronHeartbeat('auto_completion_worker_30s');
     await runSelfHealingDiagnostics();
     await scanAndRetryMissingExternalJobs();
   } catch (e: any) {

@@ -2183,13 +2183,96 @@ export async function withdrawOnFreelancer(
 }
 
 export interface SystemHealthStatus {
-  status: 'healthy' | 'operational' | 'degraded' | 'error';
+  status: 'healthy' | 'operational' | 'degraded' | 'critical' | 'error';
   timestamp: string;
-  uptimeSeconds: number;
-  responseTimeMs: number;
-  environment: string;
-  version: string;
-  database: {
+  uptimeSeconds?: number;
+  responseTimeMs?: number;
+  environment?: string;
+  version?: string;
+  remediation?: string;
+  checks?: {
+    database: {
+      status: 'healthy' | 'degraded' | 'critical';
+      latencyMs: number;
+      message?: string;
+      error?: string;
+      provider?: string;
+      inMemoryFallback?: boolean;
+      tables?: {
+        users?: number;
+        jobs?: number;
+        workOrders?: number;
+        transactions?: number;
+      };
+    };
+    cron: {
+      status: 'healthy' | 'degraded' | 'critical';
+      lastRun: string;
+      secondsSinceLastRun: number;
+      intervalSeconds: number;
+      message?: string;
+    };
+    paypal: {
+      status: 'healthy' | 'degraded' | 'critical';
+      message: string;
+      latencyMs?: number;
+      mode?: string;
+      error?: string;
+    };
+    freelancer: {
+      status: 'healthy' | 'degraded' | 'critical';
+      message: string;
+      latencyMs?: number;
+      testedUrl?: string;
+      error?: string;
+    };
+    queues: {
+      status: 'healthy' | 'degraded' | 'critical';
+      details: {
+        'payout:waiting'?: number;
+        'payout:failed'?: number;
+        'freelancer:waiting'?: number;
+        'freelancer:active'?: number;
+        'freelancer:failed'?: number;
+        'freelancer:delayed'?: number;
+        inMemoryRetryQueue?: number;
+        [key: string]: number | undefined;
+      };
+      failedJobsCount?: number;
+      message?: string;
+    };
+    workOrders: {
+      status: 'healthy' | 'degraded' | 'critical';
+      stuckCount: number;
+      failedPayments: number;
+      totalActive?: number;
+      totalCompleted?: number;
+      message?: string;
+    };
+    transactions: {
+      status: 'healthy' | 'degraded' | 'critical';
+      pendingOld: number;
+      failedCount?: number;
+      totalCount?: number;
+      message?: string;
+    };
+    autoHeal?: {
+      status: 'healthy' | 'degraded' | 'critical';
+      enabled: boolean;
+      intervalSeconds: number;
+      maxAttempts: number;
+      consecutiveFailures: number;
+      recentAttemptsCount: number;
+      lastRunAt?: string | null;
+      lastSuccessAt?: string | null;
+      lastFailureAt?: string | null;
+      isCurrentlyHealing?: boolean;
+      escalated?: boolean;
+      message?: string;
+    };
+  };
+  autoHealer?: AutoHealerStatus;
+  database?: {
     status: string;
     connected: boolean;
     type: string;
@@ -2200,15 +2283,16 @@ export interface SystemHealthStatus {
       users: number;
       transactions: number;
       workOrders: number;
-      paypalOrders: number;
+      jobs?: number;
+      paypalOrders?: number;
     };
   };
-  sqlite: {
+  sqlite?: {
     status: string;
     path: string;
     exists: boolean;
   };
-  apiKeys: {
+  apiKeys?: {
     gemini: {
       name: string;
       configured: boolean;
@@ -2248,11 +2332,330 @@ export interface SystemHealthStatus {
       role: string;
     };
   };
-  summary: {
+  summary?: {
     allSystemsReady: boolean;
     activeServicesCount: number;
     totalServicesCount: number;
   };
+  mlAIOps?: MLServiceStatus;
+  predictiveML?: MLPredictionResult;
+}
+
+export interface MLPredictionResult {
+  prediction_id?: string;
+  issue_type: 'healthy' | 'paypal_failure' | 'db_timeout' | 'queue_stuck' | 'freelancer_sync_fail' | 'stuck_work_orders';
+  confidence: number;
+  model_version: string;
+  recommended_remediation: string;
+  latency_ms: number;
+  source: string;
+  cached: boolean;
+  probabilities?: Record<string, number>;
+}
+
+export interface MLServiceStatus {
+  enabled: boolean;
+  service_url: string;
+  online: boolean;
+  mode: 'connected' | 'fallback_resilient';
+  active_model_version: string;
+  accuracy: number;
+  f1_score: number;
+  confidence_threshold: number;
+  performance_threshold: number;
+  consecutive_train_failures: number;
+  recent_predictions_count: number;
+  cached_predictions_count: number;
+  last_prediction?: MLPredictionResult | null;
+  last_trained_at?: string | null;
+}
+
+export interface MLFeedbackItem {
+  id?: string;
+  prediction_id: string;
+  predicted_label: string;
+  confidence: number;
+  actual_label: string;
+  remediation_success: boolean;
+  features: Record<string, number>;
+  timestamp: string;
+}
+
+export interface MLModelRecordItem {
+  id?: string;
+  version: string;
+  path: string;
+  accuracy: number;
+  f1_score: number;
+  deployed_at: string;
+  active: boolean;
+  metadata?: any;
+}
+
+export interface AutoHealerStatus {
+  enabled: boolean;
+  intervalSeconds: number;
+  maxAttempts: number;
+  consecutiveFailures: number;
+  recentAttemptsCount: number;
+  lastRunAt: string | null;
+  lastSuccessAt: string | null;
+  lastFailureAt: string | null;
+  isCurrentlyHealing: boolean;
+  alertWebhookConfigured: boolean;
+  escalated: boolean;
+  queueType: 'bull_redis' | 'in_memory';
+  queueStats: {
+    waiting: number;
+    active: number;
+    completed: number;
+    failed: number;
+  };
+}
+
+export interface SelfHealingLogItem {
+  id: string;
+  timestamp: string;
+  check_status: 'healthy' | 'degraded' | 'critical';
+  remediation_triggered: boolean;
+  remediation_success: boolean;
+  details: any;
+  retry_count: number;
+}
+
+/**
+ * Fetch live AutoHealer status
+ */
+export async function fetchAutoHealerStatus(): Promise<AutoHealerStatus | null> {
+  try {
+    const res = await fetch(apiUrl('/api/health/auto-heal/status'));
+    if (!res.ok) {
+      const localRes = await fetch('/api/health/auto-heal/status');
+      if (localRes.ok) {
+        const data = await localRes.json();
+        return data.status || null;
+      }
+      return null;
+    }
+    const data = await res.json();
+    return data.status || null;
+  } catch (err) {
+    console.warn('[AutoHealerAPI] Status fetch failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Fetch historical AutoHealer audit logs
+ */
+export async function fetchAutoHealerLogs(limit: number = 30): Promise<SelfHealingLogItem[]> {
+  try {
+    const res = await fetch(apiUrl(`/api/health/auto-heal/logs?limit=${limit}`));
+    if (!res.ok) {
+      const localRes = await fetch(`/api/health/auto-heal/logs?limit=${limit}`);
+      if (localRes.ok) {
+        const data = await localRes.json();
+        return data.logs || [];
+      }
+      return [];
+    }
+    const data = await res.json();
+    return data.logs || [];
+  } catch (err) {
+    console.warn('[AutoHealerAPI] Logs fetch failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Toggle Auto-Healer loop enabled/disabled
+ */
+export async function toggleAutoHealer(enabled: boolean): Promise<{ success: boolean; status?: AutoHealerStatus; error?: string }> {
+  try {
+    const res = await fetch(apiUrl('/api/health/auto-heal/toggle'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled })
+    });
+    return await res.json();
+  } catch (err: any) {
+    try {
+      const localRes = await fetch('/api/health/auto-heal/toggle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      return await localRes.json();
+    } catch {
+      return { success: false, error: err.message || 'Toggle request failed' };
+    }
+  }
+}
+
+/**
+ * Trigger immediate Auto-Healer cycle manually
+ */
+export async function triggerAutoHealerCycle(): Promise<{ success: boolean; result?: any; status?: AutoHealerStatus; error?: string }> {
+  try {
+    const res = await fetch(apiUrl('/api/health/auto-heal/trigger'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return await res.json();
+  } catch (err: any) {
+    try {
+      const localRes = await fetch('/api/health/auto-heal/trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      return await localRes.json();
+    } catch {
+      return { success: false, error: err.message || 'Trigger request failed' };
+    }
+  }
+}
+
+/**
+ * Trigger autonomous self-healing remediation on the backend
+ */
+export async function triggerSelfHealingRemediation(): Promise<{
+  success: boolean;
+  message?: string;
+  remediationResults?: any;
+  health?: SystemHealthStatus;
+  error?: string;
+}> {
+  try {
+    const res = await fetch(apiUrl('/api/health/remediate'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return await res.json();
+  } catch (err: any) {
+    try {
+      const localRes = await fetch('/api/health/remediate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      return await localRes.json();
+    } catch {
+      return { success: false, error: err.message || 'Remediation request failed' };
+    }
+  }
+}
+
+/**
+ * Fetch ML AIOps status and active model metrics
+ */
+export async function fetchMLStatus(): Promise<MLServiceStatus | null> {
+  try {
+    const res = await fetch(apiUrl('/api/ml/status'));
+    if (!res.ok) {
+      const localRes = await fetch('/api/ml/status');
+      if (localRes.ok) {
+        const data = await localRes.json();
+        return data.status || null;
+      }
+      return null;
+    }
+    const data = await res.json();
+    return data.status || null;
+  } catch (err) {
+    console.warn('[MLApi] Status fetch failed:', err);
+    return null;
+  }
+}
+
+/**
+ * Trigger autonomous or forced ML retraining
+ */
+export async function triggerMLRetrain(forceDeploy: boolean = false, versionTag?: string): Promise<any> {
+  try {
+    const res = await fetch(apiUrl('/api/ml/train'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ forceDeploy, versionTag }),
+    });
+    return await res.json();
+  } catch (err: any) {
+    try {
+      const localRes = await fetch('/api/ml/train', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ forceDeploy, versionTag }),
+      });
+      return await localRes.json();
+    } catch {
+      return { success: false, error: err.message || 'Retraining request failed' };
+    }
+  }
+}
+
+/**
+ * Rollback active ML model to previous stable version
+ */
+export async function triggerMLRollback(): Promise<any> {
+  try {
+    const res = await fetch(apiUrl('/api/ml/rollback'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    return await res.json();
+  } catch (err: any) {
+    try {
+      const localRes = await fetch('/api/ml/rollback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      return await localRes.json();
+    } catch {
+      return { success: false, error: err.message || 'Rollback request failed' };
+    }
+  }
+}
+
+/**
+ * Fetch all registered ML model versions
+ */
+export async function fetchMLModels(): Promise<MLModelRecordItem[]> {
+  try {
+    const res = await fetch(apiUrl('/api/ml/models'));
+    if (!res.ok) {
+      const localRes = await fetch('/api/ml/models');
+      if (localRes.ok) {
+        const data = await localRes.json();
+        return data.models || [];
+      }
+      return [];
+    }
+    const data = await res.json();
+    return data.models || [];
+  } catch (err) {
+    console.warn('[MLApi] Models fetch failed:', err);
+    return [];
+  }
+}
+
+/**
+ * Fetch recent continuous learning prediction feedback logs
+ */
+export async function fetchMLFeedback(limit: number = 20): Promise<MLFeedbackItem[]> {
+  try {
+    const res = await fetch(apiUrl(`/api/ml/feedback?limit=${limit}`));
+    if (!res.ok) {
+      const localRes = await fetch(`/api/ml/feedback?limit=${limit}`);
+      if (localRes.ok) {
+        const data = await localRes.json();
+        return data.feedback || [];
+      }
+      return [];
+    }
+    const data = await res.json();
+    return data.feedback || [];
+  } catch (err) {
+    console.warn('[MLApi] Feedback fetch failed:', err);
+    return [];
+  }
 }
 
 /**
@@ -2644,6 +3047,238 @@ export async function verifyDatabaseSnapshot(snapshotId: string): Promise<{
     return { success: false, error: err.message || 'Verification failed' };
   }
 }
+
+// ==========================================
+// GITHUB INTEGRATION & SSH KEY MANAGEMENT
+// ==========================================
+
+export interface GitHubSSHKeyInfo {
+  configured: boolean;
+  keyType?: 'ed25519' | 'rsa';
+  publicKey?: string;
+  fingerprint?: string;
+  comment?: string;
+  path?: string;
+  createdAt?: string;
+  size?: number;
+  hasConfig?: boolean;
+  hasKnownHosts?: boolean;
+}
+
+export interface GitHubRepoStatus {
+  currentBranch: string;
+  remoteOriginUrl: string | null;
+  isSSHRemote: boolean;
+  userName: string;
+  userEmail: string;
+  clean: boolean;
+  lastCommit?: {
+    hash: string;
+    message: string;
+    author: string;
+    date: string;
+  };
+  uncommittedCount: number;
+}
+
+export interface GitHubSSHTestResult {
+  success: boolean;
+  authenticated: boolean;
+  username?: string;
+  message: string;
+  rawOutput: string;
+  diagnostics?: string;
+  testedAt: string;
+}
+
+export interface GitOperationClientResult {
+  success: boolean;
+  operation: string;
+  exitCode: number;
+  output: string;
+  durationMs: number;
+  timestamp: string;
+}
+
+export async function fetchGitHubStatus(): Promise<{
+  success: boolean;
+  ssh: GitHubSSHKeyInfo;
+  repo: GitHubRepoStatus;
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/github/status');
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+      ssh: { configured: false },
+      repo: {
+        currentBranch: 'main',
+        remoteOriginUrl: null,
+        isSSHRemote: false,
+        userName: '',
+        userEmail: '',
+        clean: true,
+        uncommittedCount: 0
+      },
+      error: err.message || 'Failed to fetch GitHub status'
+    };
+  }
+}
+
+export async function generateGitHubSSHKey(
+  keyType: 'ed25519' | 'rsa' = 'ed25519',
+  comment: string = 'ky8402@gmail.com'
+): Promise<{
+  success: boolean;
+  message?: string;
+  key?: {
+    publicKey: string;
+    fingerprint: string;
+    keyType: string;
+    comment: string;
+  };
+  repo?: GitHubRepoStatus;
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/github/generate-ssh', {
+      method: 'POST',
+      body: JSON.stringify({ keyType, comment })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to generate SSH key' };
+  }
+}
+
+export async function saveGitHubSSHKey(
+  privateKey: string,
+  publicKey?: string,
+  keyType: 'ed25519' | 'rsa' = 'ed25519',
+  comment: string = 'ky8402@gmail.com'
+): Promise<{
+  success: boolean;
+  message?: string;
+  key?: {
+    publicKey: string;
+    fingerprint: string;
+    keyType: string;
+  };
+  repo?: GitHubRepoStatus;
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/github/save-ssh', {
+      method: 'POST',
+      body: JSON.stringify({ privateKey, publicKey, keyType, comment })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to save SSH key' };
+  }
+}
+
+export async function deleteGitHubSSHKey(): Promise<{
+  success: boolean;
+  message?: string;
+  repo?: GitHubRepoStatus;
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/github/delete-ssh', {
+      method: 'DELETE'
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to delete SSH key' };
+  }
+}
+
+export async function configureGitHubRemote(
+  remoteUrl: string,
+  userName?: string,
+  userEmail?: string
+): Promise<{
+  success: boolean;
+  message?: string;
+  config?: {
+    remoteOriginUrl: string;
+    isSSHRemote: boolean;
+    userName: string;
+    userEmail: string;
+  };
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/github/configure-remote', {
+      method: 'POST',
+      body: JSON.stringify({ remoteUrl, userName, userEmail })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return { success: false, error: err.message || 'Failed to configure remote URL' };
+  }
+}
+
+export async function testGitHubSSHConnection(): Promise<{
+  success: boolean;
+  result: GitHubSSHTestResult;
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/github/test-connection', {
+      method: 'POST'
+    });
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+      result: {
+        success: false,
+        authenticated: false,
+        message: err.message || 'Connection test failed',
+        rawOutput: err.stack || err.message,
+        testedAt: new Date().toISOString()
+      },
+      error: err.message
+    };
+  }
+}
+
+export async function executeGitOp(
+  operation: 'status' | 'fetch' | 'pull' | 'push',
+  branch: string = 'main',
+  remote: string = 'origin'
+): Promise<{
+  success: boolean;
+  result: GitOperationClientResult;
+  repo?: GitHubRepoStatus;
+  error?: string;
+}> {
+  try {
+    const res = await secureFetch('/api/github/git-op', {
+      method: 'POST',
+      body: JSON.stringify({ operation, branch, remote })
+    });
+    return await res.json();
+  } catch (err: any) {
+    return {
+      success: false,
+      result: {
+        success: false,
+        operation,
+        exitCode: 1,
+        output: err.message || 'Git operation failed',
+        durationMs: 0,
+        timestamp: new Date().toISOString()
+      },
+      error: err.message
+    };
+  }
+}
+
 
 
 

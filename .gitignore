@@ -6,3 +6,16 @@ coverage/
 *.log
 .env*
 !.env.example
+.dev.env.json
+.dev.pid
+__pycache__/
+*.pyc
+.cache/
+server/data/
+*.key
+*.pem
+*.pub
+*.db
+bids.db
+mlruns/
+.git-credentials

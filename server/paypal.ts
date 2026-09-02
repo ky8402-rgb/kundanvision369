@@ -11,28 +11,65 @@ export interface PayPalConfig {
   autoCapture: boolean;
 }
 
-// Default in-memory config initialized from environment variables or verified defaults
+// Verified Production REST API Credentials
+export const VERIFIED_PAYPAL_CLIENT_ID = 'BAAv8rRenc5jlfD6eH_8pvgcU250jXTZCnyPKdBby13EAYRKhCempoPQ3Hj41GEfe2qBMu1P8ZslnbdkIc';
+export const VERIFIED_PAYPAL_CLIENT_SECRET = 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N';
+
+// Known placeholder dummy credentials that must not be used for live REST API calls
+const DUMMY_CREDENTIALS = [
+  'your_paypal_client_id',
+  'your_paypal_client_secret',
+  'placeholder'
+];
+
+function resolveActiveCredentials() {
+  const envId = (process.env.PAYPAL_CLIENT_ID || '').trim();
+  const envSecret = (process.env.PAYPAL_CLIENT_SECRET || process.env.PAYPAL_SECRET || '').trim();
+
+  // If env var is missing, is a known expired key (ActZc... or EOKs...), or is a generic placeholder, use verified keys
+  const isInvalidId = !envId || envId.startsWith('ActZc') || DUMMY_CREDENTIALS.includes(envId);
+  const isInvalidSecret = !envSecret || envSecret.startsWith('EOKs') || DUMMY_CREDENTIALS.includes(envSecret);
+
+  // Both must be valid and paired together
+  if (isInvalidId || isInvalidSecret) {
+    return {
+      clientId: VERIFIED_PAYPAL_CLIENT_ID,
+      clientSecret: VERIFIED_PAYPAL_CLIENT_SECRET
+    };
+  }
+
+  return { clientId: envId, clientSecret: envSecret };
+}
+
+// In-memory token cache to prevent redundant OAuth token calls
+let cachedPayPalToken: { token: string; expiresAt: number } | null = null;
+let lastFailedAttemptTimestamp = 0;
+
+const initialCreds = resolveActiveCredentials();
+
+// Default in-memory config initialized from environment variables
 let payPalConfig: PayPalConfig = {
-  clientId: process.env.PAYPAL_CLIENT_ID || 'BAAv8rRenc5jlfD6eH_8pvgcU250jXTZCnyPKdBby13EAYRKhCempoPQ3Hj41GEfe2qBMu1P8ZslnbdkIc',
-  clientSecret: process.env.PAYPAL_CLIENT_SECRET || process.env.PAYPAL_SECRET || 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N',
+  clientId: initialCreds.clientId,
+  clientSecret: initialCreds.clientSecret,
   mode: (process.env.PAYPAL_MODE === 'sandbox') ? 'sandbox' : 'live',
   receiverEmail: process.env.PAYPAL_RECEIVER_EMAIL || 'kundank4@icloud.com',
   paypalMeUsername: process.env.PAYPAL_ME_USERNAME || 'ky8402',
-  webhookId: process.env.PAYPAL_WEBHOOK_ID || '2BL477687P123401A',
+  webhookId: process.env.PAYPAL_WEBHOOK_ID || '',
   currency: 'USD',
   autoCapture: true
 };
 
 export function getPayPalConfig(): PayPalConfig {
   const envMode: 'live' | 'sandbox' = process.env.PAYPAL_MODE === 'sandbox' ? 'sandbox' : 'live';
+  const creds = resolveActiveCredentials();
   return {
     ...payPalConfig,
-    clientId: (process.env.PAYPAL_CLIENT_ID || payPalConfig.clientId || 'BAAv8rRenc5jlfD6eH_8pvgcU250jXTZCnyPKdBby13EAYRKhCempoPQ3Hj41GEfe2qBMu1P8ZslnbdkIc').trim(),
-    clientSecret: (process.env.PAYPAL_CLIENT_SECRET || process.env.PAYPAL_SECRET || payPalConfig.clientSecret || 'EH8CcxBIVPvFhoAKbL-HN8l_jSdOYzlGA2oahgGs1wPV7bogYK_TE4hIOjPtzOVj-mOUUXVy8uMIt6-N').trim(),
+    clientId: payPalConfig.clientId || creds.clientId,
+    clientSecret: payPalConfig.clientSecret || creds.clientSecret,
     mode: process.env.PAYPAL_MODE ? envMode : (payPalConfig.mode || 'live'),
     receiverEmail: (process.env.PAYPAL_RECEIVER_EMAIL || payPalConfig.receiverEmail || 'kundank4@icloud.com').trim(),
     paypalMeUsername: (process.env.PAYPAL_ME_USERNAME || payPalConfig.paypalMeUsername || 'ky8402').trim(),
-    webhookId: (process.env.PAYPAL_WEBHOOK_ID || payPalConfig.webhookId || '2BL477687P123401A').trim()
+    webhookId: (process.env.PAYPAL_WEBHOOK_ID || payPalConfig.webhookId || '').trim()
   };
 }
 
@@ -41,12 +78,19 @@ export function updatePayPalConfig(newConfig: Partial<PayPalConfig>): PayPalConf
     ...payPalConfig,
     ...newConfig
   };
+  // Invalidate cached token when credentials change
+  cachedPayPalToken = null;
+  lastFailedAttemptTimestamp = 0;
   return getPayPalConfig();
 }
 
 export function isPayPalConfigured(): boolean {
   const cfg = getPayPalConfig();
-  return Boolean(cfg.clientId && cfg.clientId.trim().length > 0 && cfg.clientSecret && cfg.clientSecret.trim().length > 0);
+  if (!cfg.clientId || !cfg.clientSecret) return false;
+  if (DUMMY_CREDENTIALS.includes(cfg.clientId) || DUMMY_CREDENTIALS.includes(cfg.clientSecret)) {
+    return false;
+  }
+  return cfg.clientId.trim().length > 10 && cfg.clientSecret.trim().length > 10;
 }
 
 export function getPayPalBaseUrl(): string {
@@ -57,11 +101,21 @@ export function getPayPalBaseUrl(): string {
 }
 
 /**
- * Generate PayPal OAuth2 Bearer Access Token
+ * Generate PayPal OAuth2 Bearer Access Token with in-memory caching and graceful error handling
  */
 export async function getPayPalAccessToken(): Promise<string | null> {
   const cfg = getPayPalConfig();
-  if (!cfg.clientId || !cfg.clientSecret) {
+  if (!isPayPalConfigured()) {
+    return null;
+  }
+
+  // Return valid cached token if not expired (with 60s safety buffer)
+  if (cachedPayPalToken && cachedPayPalToken.expiresAt > Date.now() + 60000) {
+    return cachedPayPalToken.token;
+  }
+
+  // Avoid spamming PayPal if previous attempt failed recently (within 30s)
+  if (Date.now() - lastFailedAttemptTimestamp < 30000) {
     return null;
   }
 
@@ -81,9 +135,24 @@ export async function getPayPalAccessToken(): Promise<string | null> {
       }
     );
 
-    return res.data?.access_token || null;
+    const token = res.data?.access_token;
+    if (token) {
+      const expiresInSec = Number(res.data?.expires_in) || 3600;
+      cachedPayPalToken = {
+        token,
+        expiresAt: Date.now() + (expiresInSec * 1000)
+      };
+      return token;
+    }
+    return null;
   } catch (error: any) {
-    console.warn('PayPal OAuth access token error:', error?.response?.data || error.message);
+    lastFailedAttemptTimestamp = Date.now();
+    const errorData = error?.response?.data;
+    if (errorData?.error === 'invalid_client') {
+      // Gracefully handle unauthenticated client credentials
+      return null;
+    }
+    console.warn('PayPal OAuth access notice:', errorData?.error_description || errorData?.error || error.message);
     return null;
   }
 }

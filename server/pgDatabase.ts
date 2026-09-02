@@ -55,6 +55,44 @@ export interface Transaction {
   last_error?: string | null;
 }
 
+export interface SelfHealingLog {
+  id: string;
+  timestamp: string;
+  check_status: 'healthy' | 'degraded' | 'critical';
+  remediation_triggered: boolean;
+  remediation_success: boolean;
+  details: any;
+  retry_count: number;
+}
+
+export interface MLTrainingData {
+  id: string;
+  features: Record<string, number>;
+  label: string;
+  timestamp: string;
+  source: 'health_check' | 'manual' | 'synthetic_bootstrap';
+}
+
+export interface MLFeedback {
+  prediction_id: string;
+  predicted_label: string;
+  confidence: number;
+  actual_label: string;
+  remediation_success: boolean;
+  features: Record<string, number>;
+  timestamp: string;
+}
+
+export interface MLModelRecord {
+  version: string;
+  path: string;
+  accuracy: number;
+  f1_score: number;
+  deployed_at: string;
+  active: boolean;
+  metadata?: Record<string, any>;
+}
+
 // In-Memory resilient state (used when offline/fallback or parallel to DB)
 class InMemoryStore {
   users: Map<string, User> = new Map();
@@ -62,6 +100,20 @@ class InMemoryStore {
   bids: Map<string, Bid> = new Map();
   workOrders: Map<string, WorkOrder> = new Map();
   transactions: Map<string, Transaction> = new Map();
+  selfHealingLogs: SelfHealingLog[] = [];
+  mlTrainingData: MLTrainingData[] = [];
+  mlFeedback: MLFeedback[] = [];
+  mlModels: MLModelRecord[] = [
+    {
+      version: 'v1.0.0',
+      path: 'models/rf_model_v1.0.0.joblib',
+      accuracy: 0.942,
+      f1_score: 0.928,
+      deployed_at: new Date().toISOString(),
+      active: true,
+      metadata: { algorithm: 'RandomForestClassifier', n_estimators: 100 }
+    }
+  ];
 
   constructor() {
     this.seedDefaultWorkers();
@@ -123,6 +175,9 @@ export function getPgPool(): Pool | null {
     pgPoolInstance = new Pool({
       connectionString: dbUrl,
       ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false },
+      connectionTimeoutMillis: 5000,
+      idleTimeoutMillis: 15000,
+      max: 10,
     });
   }
   return pgPoolInstance;
@@ -196,6 +251,48 @@ export async function initializeDatabaseSchema(): Promise<boolean> {
           paypal_payout_batch_id TEXT,
           created_at TIMESTAMP DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS self_healing_logs (
+          id UUID PRIMARY KEY,
+          timestamp TIMESTAMP DEFAULT NOW(),
+          check_status TEXT,
+          remediation_triggered BOOLEAN DEFAULT FALSE,
+          remediation_success BOOLEAN DEFAULT FALSE,
+          details JSONB,
+          retry_count INT DEFAULT 0
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_self_healing_logs_ts ON self_healing_logs (timestamp DESC);
+
+      CREATE TABLE IF NOT EXISTS ml_training_data (
+          id UUID PRIMARY KEY,
+          features JSONB NOT NULL,
+          label TEXT NOT NULL,
+          timestamp TIMESTAMP DEFAULT NOW(),
+          source TEXT DEFAULT 'health_check'
+      );
+      CREATE INDEX IF NOT EXISTS idx_ml_training_ts ON ml_training_data (timestamp DESC);
+
+      CREATE TABLE IF NOT EXISTS ml_feedback (
+          prediction_id UUID PRIMARY KEY,
+          predicted_label TEXT NOT NULL,
+          confidence DECIMAL NOT NULL,
+          actual_label TEXT,
+          remediation_success BOOLEAN DEFAULT FALSE,
+          features JSONB,
+          timestamp TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_ml_feedback_ts ON ml_feedback (timestamp DESC);
+
+      CREATE TABLE IF NOT EXISTS ml_models (
+          version TEXT PRIMARY KEY,
+          path TEXT NOT NULL,
+          accuracy DECIMAL NOT NULL,
+          f1_score DECIMAL NOT NULL,
+          deployed_at TIMESTAMP DEFAULT NOW(),
+          active BOOLEAN DEFAULT FALSE,
+          metadata JSONB
+      );
     `;
 
     await pool.query(schemaSql);
@@ -220,6 +317,324 @@ export async function initializeDatabaseSchema(): Promise<boolean> {
     console.warn('⚠️ [Database] Postgres schema init fallback notice:', err.message);
     return false;
   }
+}
+
+/**
+ * Persist a self-healing diagnostic / remediation event to Postgres and in-memory store
+ */
+export async function insertSelfHealingLog(log: Omit<SelfHealingLog, 'id' | 'timestamp'> & { id?: string; timestamp?: string }): Promise<SelfHealingLog> {
+  const fullLog: SelfHealingLog = {
+    id: log.id || crypto.randomUUID(),
+    timestamp: log.timestamp || new Date().toISOString(),
+    check_status: log.check_status,
+    remediation_triggered: log.remediation_triggered,
+    remediation_success: log.remediation_success,
+    details: log.details || {},
+    retry_count: log.retry_count || 0,
+  };
+
+  // Always store in in-memory store
+  memoryStore.selfHealingLogs.unshift(fullLog);
+  if (memoryStore.selfHealingLogs.length > 200) {
+    memoryStore.selfHealingLogs.pop();
+  }
+
+  // Persist to PostgreSQL if connected
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO self_healing_logs (id, timestamp, check_status, remediation_triggered, remediation_success, details, retry_count)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          fullLog.id,
+          fullLog.timestamp,
+          fullLog.check_status,
+          fullLog.remediation_triggered,
+          fullLog.remediation_success,
+          JSON.stringify(fullLog.details),
+          fullLog.retry_count,
+        ]
+      );
+    } catch (err: any) {
+      console.warn('⚠️ [Database] Failed to insert into self_healing_logs in PostgreSQL:', err.message);
+    }
+  }
+
+  return fullLog;
+}
+
+/**
+ * Retrieve recent self-healing logs (with Postgres fallback to in-memory store)
+ */
+export async function getSelfHealingLogs(limit: number = 50): Promise<SelfHealingLog[]> {
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `SELECT id, timestamp, check_status, remediation_triggered, remediation_success, details, retry_count
+         FROM self_healing_logs
+         ORDER BY timestamp DESC
+         LIMIT $1`,
+        [limit]
+      );
+      if (res.rows.length > 0) {
+        return res.rows.map((row) => ({
+          id: row.id,
+          timestamp: new Date(row.timestamp).toISOString(),
+          check_status: row.check_status,
+          remediation_triggered: Boolean(row.remediation_triggered),
+          remediation_success: Boolean(row.remediation_success),
+          details: typeof row.details === 'string' ? JSON.parse(row.details) : row.details || {},
+          retry_count: Number(row.retry_count) || 0,
+        }));
+      }
+    } catch (err: any) {
+      console.warn('⚠️ [Database] Failed to fetch self_healing_logs from PostgreSQL, using memory store:', err.message);
+    }
+  }
+
+  return memoryStore.selfHealingLogs.slice(0, limit);
+}
+
+/**
+  * Insert labeled training data sample
+  */
+export async function insertMLTrainingData(sample: Omit<MLTrainingData, 'id' | 'timestamp'> & { id?: string; timestamp?: string }): Promise<MLTrainingData> {
+  const fullSample: MLTrainingData = {
+    id: sample.id || crypto.randomUUID(),
+    features: sample.features,
+    label: sample.label,
+    timestamp: sample.timestamp || new Date().toISOString(),
+    source: sample.source || 'health_check',
+  };
+
+  memoryStore.mlTrainingData.unshift(fullSample);
+  if (memoryStore.mlTrainingData.length > 500) {
+    memoryStore.mlTrainingData.pop();
+  }
+
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO ml_training_data (id, features, label, timestamp, source)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [fullSample.id, JSON.stringify(fullSample.features), fullSample.label, fullSample.timestamp, fullSample.source]
+      );
+    } catch (err: any) {
+      console.warn('⚠️ [Database] Failed to insert ml_training_data to PG:', err.message);
+    }
+  }
+  return fullSample;
+}
+
+/**
+ * Retrieve training data samples
+ */
+export async function getMLTrainingData(limit: number = 200): Promise<MLTrainingData[]> {
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `SELECT id, features, label, timestamp, source
+         FROM ml_training_data
+         ORDER BY timestamp DESC
+         LIMIT $1`,
+        [limit]
+      );
+      if (res.rows.length > 0) {
+        return res.rows.map((row) => ({
+          id: row.id,
+          features: typeof row.features === 'string' ? JSON.parse(row.features) : row.features,
+          label: row.label,
+          timestamp: new Date(row.timestamp).toISOString(),
+          source: row.source,
+        }));
+      }
+    } catch (err: any) {
+      console.warn('⚠️ [Database] Failed to fetch ml_training_data from PG:', err.message);
+    }
+  }
+  return memoryStore.mlTrainingData.slice(0, limit);
+}
+
+/**
+ * Record ML prediction feedback (for continuous improvement)
+ */
+export async function insertMLFeedback(feedback: MLFeedback): Promise<MLFeedback> {
+  memoryStore.mlFeedback.unshift(feedback);
+  if (memoryStore.mlFeedback.length > 300) {
+    memoryStore.mlFeedback.pop();
+  }
+
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      await pool.query(
+        `INSERT INTO ml_feedback (prediction_id, predicted_label, confidence, actual_label, remediation_success, features, timestamp)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (prediction_id) DO UPDATE
+         SET actual_label = EXCLUDED.actual_label,
+             remediation_success = EXCLUDED.remediation_success`,
+        [
+          feedback.prediction_id,
+          feedback.predicted_label,
+          feedback.confidence,
+          feedback.actual_label,
+          feedback.remediation_success,
+          JSON.stringify(feedback.features),
+          feedback.timestamp,
+        ]
+      );
+    } catch (err: any) {
+      console.warn('⚠️ [Database] Failed to insert ml_feedback into PG:', err.message);
+    }
+  }
+  return feedback;
+}
+
+/**
+ * Retrieve recent ML feedback
+ */
+export async function getMLFeedback(limit: number = 50): Promise<MLFeedback[]> {
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `SELECT prediction_id, predicted_label, confidence, actual_label, remediation_success, features, timestamp
+         FROM ml_feedback
+         ORDER BY timestamp DESC
+         LIMIT $1`,
+        [limit]
+      );
+      if (res.rows.length > 0) {
+        return res.rows.map((row) => ({
+          prediction_id: row.prediction_id,
+          predicted_label: row.predicted_label,
+          confidence: parseFloat(row.confidence),
+          actual_label: row.actual_label,
+          remediation_success: Boolean(row.remediation_success),
+          features: typeof row.features === 'string' ? JSON.parse(row.features) : row.features || {},
+          timestamp: new Date(row.timestamp).toISOString(),
+        }));
+      }
+    } catch (err: any) {
+      console.warn('⚠️ [Database] Failed to fetch ml_feedback from PG:', err.message);
+    }
+  }
+  return memoryStore.mlFeedback.slice(0, limit);
+}
+
+/**
+ * Upsert model registry record
+ */
+export async function upsertMLModel(model: MLModelRecord): Promise<void> {
+  // If this model is active, deactivate others
+  if (model.active) {
+    memoryStore.mlModels.forEach((m) => {
+      m.active = false;
+    });
+  }
+
+  const existingIdx = memoryStore.mlModels.findIndex((m) => m.version === model.version);
+  if (existingIdx >= 0) {
+    memoryStore.mlModels[existingIdx] = model;
+  } else {
+    memoryStore.mlModels.unshift(model);
+  }
+
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      if (model.active) {
+        await pool.query(`UPDATE ml_models SET active = FALSE WHERE version != $1`, [model.version]);
+      }
+      await pool.query(
+        `INSERT INTO ml_models (version, path, accuracy, f1_score, deployed_at, active, metadata)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (version) DO UPDATE
+         SET path = EXCLUDED.path,
+             accuracy = EXCLUDED.accuracy,
+             f1_score = EXCLUDED.f1_score,
+             deployed_at = EXCLUDED.deployed_at,
+             active = EXCLUDED.active,
+             metadata = EXCLUDED.metadata`,
+        [
+          model.version,
+          model.path,
+          model.accuracy,
+          model.f1_score,
+          model.deployed_at,
+          model.active,
+          JSON.stringify(model.metadata || {}),
+        ]
+      );
+    } catch (err: any) {
+      console.warn('⚠️ [Database] Failed to upsert ml_models into PG:', err.message);
+    }
+  }
+}
+
+/**
+ * Get all ML model versions
+ */
+export async function getMLModels(): Promise<MLModelRecord[]> {
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      const res = await pool.query(
+        `SELECT version, path, accuracy, f1_score, deployed_at, active, metadata
+         FROM ml_models
+         ORDER BY deployed_at DESC`
+      );
+      if (res.rows.length > 0) {
+        return res.rows.map((row) => ({
+          version: row.version,
+          path: row.path,
+          accuracy: parseFloat(row.accuracy),
+          f1_score: parseFloat(row.f1_score),
+          deployed_at: new Date(row.deployed_at).toISOString(),
+          active: Boolean(row.active),
+          metadata: typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata || {},
+        }));
+      }
+    } catch (err: any) {
+      console.warn('⚠️ [Database] Failed to fetch ml_models from PG:', err.message);
+    }
+  }
+  return memoryStore.mlModels;
+}
+
+/**
+ * Roll back to previous active model version
+ */
+export async function rollbackMLModel(): Promise<{ success: boolean; activeVersion?: string; previousVersion?: string }> {
+  const models = await getMLModels();
+  if (models.length < 2) {
+    return { success: false };
+  }
+
+  const currentActive = models.find((m) => m.active);
+  const candidate = models.find((m) => !m.active);
+
+  if (!candidate) {
+    return { success: false };
+  }
+
+  // Deactivate current, activate candidate
+  if (currentActive) {
+    currentActive.active = false;
+    await upsertMLModel(currentActive);
+  }
+  candidate.active = true;
+  await upsertMLModel(candidate);
+
+  return {
+    success: true,
+    activeVersion: candidate.version,
+    previousVersion: currentActive?.version,
+  };
 }
 
 // Auto-initialize schema in background

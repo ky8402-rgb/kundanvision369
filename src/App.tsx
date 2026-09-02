@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, lazy } from 'react';
 import type { RemoteOKJobItem } from './components/RemoteOKJobsBoard';
 import { SEOHead } from './components/SEOHead';
 import { FreelanceJob, GeneratedProposal, ActiveContract, defaultProfile, defaultRules, defaultActiveContracts } from './types';
@@ -13,6 +13,7 @@ import { BidsTable } from './components/BidsTable';
 import { LeadsTable } from './components/LeadsTable';
 import { WithdrawalSummary } from './components/WithdrawalSummary';
 import { SystemHealthConnectivityCard } from './components/SystemHealthConnectivityCard';
+import { HealthDashboard } from './components/HealthDashboard';
 import { FreelancerMetricsSection } from './components/FreelancerMetricsSection';
 import { SupportChat } from './components/SupportChat';
 import { WorkOrderTimeline } from './components/WorkOrderTimeline';
@@ -33,6 +34,7 @@ const GSTInvoiceModal = lazy(() => import('./components/GSTInvoiceModal').then(m
 const PayPalConnectModal = lazy(() => import('./components/PayPalConnectModal').then(m => ({ default: m.PayPalConnectModal })));
 const PasswordResetModal = lazy(() => import('./components/PasswordResetModal').then(m => ({ default: m.PasswordResetModal })));
 const EmailVerificationModal = lazy(() => import('./components/EmailVerificationModal').then(m => ({ default: m.EmailVerificationModal })));
+const GitHubSettingsModal = lazy(() => import('./components/GitHubSettingsModal').then(m => ({ default: m.GitHubSettingsModal })));
 
 // Dynamic helper for celebratory confetti without bloating the main bundle
 const triggerConfetti = (opts: any) => {
@@ -133,7 +135,7 @@ const makeUniqueId = (prefix: string = 'id') => `${prefix}_${Date.now()}_${Math.
 
 export default function App() {
   // Navigation State (Default to dynamic live backend dashboard)
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'income' | 'remoteok' | 'orders' | 'invoicing' | 'paypal' | 'bank' | 'analytics' | 'notifications' | 'leads' | 'logs' | 'snapshots'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'income' | 'remoteok' | 'orders' | 'invoicing' | 'paypal' | 'bank' | 'analytics' | 'notifications' | 'leads' | 'logs' | 'snapshots' | 'health'>('dashboard');
 
   // AI Proposal Studio & Job Analysis State
   const [selectedProposalJob, setSelectedProposalJob] = useState<FreelanceJob | null>(null);
@@ -196,6 +198,7 @@ export default function App() {
   const [orderCounter, setOrderCounter] = useState<number>(100);
   const [txCounter, setTxCounter] = useState<number>(100);
   const [isCredentialsModalOpen, setIsCredentialsModalOpen] = useState<boolean>(false);
+  const [isGitHubSettingsOpen, setIsGitHubSettingsOpen] = useState<boolean>(false);
   const [isScanningPlatforms, setIsScanningPlatforms] = useState<boolean>(false);
   const [isSyncingRemoteOK, setIsSyncingRemoteOK] = useState<boolean>(false);
   const [editingOrderId, setEditingOrderId] = useState<number | string | null>(null);
@@ -519,7 +522,7 @@ export default function App() {
   };
 
   // Sync RemoteOK Live Jobs Feed
-  const syncRemoteOKJobs = async () => {
+  const syncRemoteOKJobs = useCallback(async () => {
     setIsSyncingRemoteOK(true);
     showToast('🌍 Connecting to RemoteOK API (/api/remoteok/jobs)...', 'info');
     try {
@@ -555,7 +558,20 @@ export default function App() {
     } finally {
       setIsSyncingRemoteOK(false);
     }
-  };
+  }, []);
+
+  // Stable handler for loaded bids to avoid re-rendering loops
+  const handleBidsLoaded = useCallback((loadedBids: BackendBidItem[]) => {
+    setBackendBids(prev => {
+      if (
+        prev.length === loadedBids.length &&
+        prev.every((b, i) => b.id === loadedBids[i]?.id && b.status === loadedBids[i]?.status && b.work_status === loadedBids[i]?.work_status)
+      ) {
+        return prev;
+      }
+      return loadedBids;
+    });
+  }, []);
 
   // Save customized contract amount (for RemoteOK / pending contracts)
   const saveCustomAmount = (id: number | string, customVal?: number) => {
@@ -1255,6 +1271,7 @@ export default function App() {
                 { tab: 'invoicing' as const, label: 'Invoicing', icon: 'fa-file-invoice-dollar', color: '', badge: undefined, badgeColor: undefined, count: undefined },
                 { tab: 'paypal' as const, label: 'PayPal REST API', icon: 'fab fa-paypal', color: '', badge: 'v2 LIVE', badgeColor: 'bg-[#00cfe8]/20 text-[#00cfe8]', count: undefined },
                 { tab: 'analytics' as const, label: 'Analytics', icon: 'fa-chart-line', color: '', badge: undefined, badgeColor: undefined, count: undefined },
+                { tab: 'health' as const, label: 'System Health', icon: 'fa-heartbeat', color: '', badge: 'DEVOPS', badgeColor: 'bg-emerald-500/20 text-emerald-300', count: undefined },
                 { tab: 'logs' as const, label: 'Activity Logs', icon: 'fa-terminal', color: '', badge: 'DEBUG', badgeColor: 'bg-indigo-500/20 text-indigo-300', count: undefined },
                 { tab: 'snapshots' as const, label: 'DB Snapshots & Recovery', icon: 'fa-database', color: '', badge: '3 MAX', badgeColor: 'bg-cyan-500/20 text-cyan-300', count: undefined }
               ]).map((item) => (
@@ -1395,6 +1412,7 @@ export default function App() {
               {activeTab === 'analytics' && <>Analytics <span className="text-xs sm:text-sm font-normal text-[#9aa2bf]">Autonomous performance insights</span></>}
               {activeTab === 'logs' && <>Activity Logs &amp; Webhook Debugger <span className="text-xs sm:text-sm font-normal text-[#9aa2bf]">Raw incoming payload telemetry &amp; live app-state sync</span></>}
               {activeTab === 'snapshots' && <>Database Snapshots &amp; Disaster Recovery <span className="text-xs sm:text-sm font-normal text-[#9aa2bf]">Automated Daily Snapshots, SHA-256 Checksums &amp; 3-Backup Retention</span></>}
+              {activeTab === 'health' && <>System Health &amp; DevOps Telemetry <span className="text-xs sm:text-sm font-normal text-[#9aa2bf]">Unified Health Diagnostics, Bull Queues &amp; Self-Healing</span></>}
             </h1>
           </div>
 
@@ -1503,6 +1521,16 @@ export default function App() {
             >
               <i className="fas fa-sliders-h text-[11px] text-cyan-400"></i>
               <span>Credentials &amp; Backup</span>
+            </button>
+
+            <button
+              id="topbar-btn-github-settings"
+              onClick={() => setIsGitHubSettingsOpen(true)}
+              className="bg-[#1a2236] hover:bg-[#232c45] border border-[#2a3147] hover:border-cyan-500/50 text-[#9aa2bf] hover:text-white px-3 py-2 rounded-full text-xs font-semibold flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+              title="Configure GitHub SSH Keys, Remote Origin & Push/Pull Operations"
+            >
+              <i className="fab fa-github text-[12px] text-white"></i>
+              <span>GitHub SSH</span>
             </button>
 
             <button
@@ -1702,12 +1730,10 @@ export default function App() {
             </div>
 
             {/* Dedicated System Connectivity & Health Diagnostics Widget */}
-            <Suspense fallback={<LazyFallback label="Loading Connectivity Status..." />}>
-              <SystemHealthConnectivityCard
-                onOpenSettings={() => setIsCredentialsModalOpen(true)}
-                onNavigateToSnapshots={() => setActiveTab('snapshots')}
-              />
-            </Suspense>
+            <HealthDashboard
+              onOpenSettings={() => setIsCredentialsModalOpen(true)}
+              className="mb-2"
+            />
 
             {/* Stats Grid - Populated from https://gigpilot-backend.onrender.com/api/bids/stats */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -1833,9 +1859,7 @@ export default function App() {
                   setSelectedProposalJob(jobObj);
                   setIsProposalStudioOpen(true);
                 }}
-                onBidsLoaded={(loadedBids) => {
-                  setBackendBids(loadedBids);
-                }}
+                onBidsLoaded={handleBidsLoaded}
                 onNotify={(msg, type) => {
                   showToast(msg, type || 'info');
                 }}
@@ -2558,6 +2582,13 @@ export default function App() {
           </Suspense>
         )}
 
+        {/* ===== TAB 10: UNIFIED DEVOPS SYSTEM HEALTH DASHBOARD ===== */}
+        {activeTab === 'health' && (
+          <div className="space-y-6">
+            <HealthDashboard onOpenSettings={() => setIsCredentialsModalOpen(true)} />
+          </div>
+        )}
+
       </main>
 
       {/* ===== PLATFORM CREDENTIALS, WEBHOOKS & DATA RECOVERY MODAL ===== */}
@@ -2579,6 +2610,19 @@ export default function App() {
             completedOrders
           }}
           showToast={showToast}
+          onOpenGitHubSettings={() => setIsGitHubSettingsOpen(true)}
+        />
+      </Suspense>
+
+      {/* ===== GITHUB INTEGRATION & SSH KEY SETTINGS MODAL ===== */}
+      <Suspense fallback={null}>
+        <GitHubSettingsModal
+          isOpen={isGitHubSettingsOpen}
+          onClose={() => setIsGitHubSettingsOpen(false)}
+          showToast={showToast}
+          onRemoteConfigured={(url) => {
+            showToast(`GitHub Remote set to: ${url}`, 'success');
+          }}
         />
       </Suspense>
 

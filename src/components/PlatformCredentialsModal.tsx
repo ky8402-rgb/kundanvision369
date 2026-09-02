@@ -7,6 +7,7 @@ export interface PlatformCredentialsModalProps {
   onClose: () => void;
   onOrderAdded: (order: any) => void;
   showToast: (msg: string, type?: 'success' | 'info' | 'warning' | 'error') => void;
+  onOpenGitHubSettings?: () => void;
   workOrders?: any[];
   transactions?: any[];
   invoices?: any[];
@@ -24,6 +25,7 @@ export function PlatformCredentialsModal({
   onClose,
   onOrderAdded,
   showToast,
+  onOpenGitHubSettings,
   workOrders = [],
   transactions = [],
   invoices = [],
@@ -219,6 +221,21 @@ export function PlatformCredentialsModal({
               JSON
             </span>
           </button>
+          {onOpenGitHubSettings && (
+            <button
+              onClick={() => {
+                onClose();
+                onOpenGitHubSettings();
+              }}
+              className="py-3 px-4 text-xs font-semibold border-b-2 whitespace-nowrap transition-colors flex items-center gap-1.5 border-transparent text-cyan-400 hover:text-white"
+              title="Open GitHub SSH Keys & Push/Pull Operations Modal"
+            >
+              <span>5. GitHub SSH Keys</span>
+              <span className="px-1.5 py-0.2 bg-cyan-500/20 text-cyan-300 text-[10px] rounded font-mono font-bold">
+                Git
+              </span>
+            </button>
+          )}
         </div>
 
         {/* Modal Body */}

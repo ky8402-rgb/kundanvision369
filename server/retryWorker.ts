@@ -14,6 +14,16 @@ interface RetryItem {
 const retryQueue: Map<string, RetryItem> = new Map();
 const MAX_RETRY_ATTEMPTS = 3;
 
+export function getPayoutRetryQueueStats(): {
+  waiting: number;
+  items: RetryItem[];
+} {
+  return {
+    waiting: retryQueue.size,
+    items: Array.from(retryQueue.values()),
+  };
+}
+
 /**
  * Enqueue a failed work order payout for self-healing retry with exponential backoff
  */
