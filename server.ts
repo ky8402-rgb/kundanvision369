@@ -35,6 +35,7 @@ import notificationsRoutes from "./routes/notifications.js";
 import activityLogsRoutes from "./routes/activityLogs.js";
 import authRoutes from "./routes/auth.js";
 import freelancerBidsRoutes from "./routes/freelancerBids.js";
+import neonRoutes from "./routes/neon.js";
 import { logActivityEvent } from "./server/activityLogger.js";
 import { verifyWebhookSignature } from "./server/webhookSecurity.js";
 import { checkCredits } from "./server/checkCredits.js";
@@ -270,6 +271,9 @@ app.use("/api/auth", authRoutes);
 
 // 8. Freelancer.com SQLite Bids & Analytics
 app.use("/api/freelancer", freelancerBidsRoutes);
+
+// 9. Neon Serverless PostgreSQL Gateway & Diagnostics
+app.use("/api/neon", neonRoutes);
 
 // Compatibility aliases for /api/bids, /api/bids/stats, and /api/leads list
 app.use("/api/bids", freelancerBidsRoutes);
