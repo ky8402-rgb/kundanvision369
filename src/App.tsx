@@ -100,6 +100,11 @@ export interface WorkOrder {
   url?: string;
   location?: string;
   tags?: string[];
+  completion_deadline?: string;
+  completed_at?: string | null;
+  customer_confirmed?: boolean;
+  worker_marked_complete?: boolean;
+  worker_email?: string;
 }
 
 export interface Transaction {

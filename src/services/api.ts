@@ -424,6 +424,38 @@ export async function submitLivePlatformBid(orderId: number | string, bidData: {
 
 export async function fetchBackendWorkOrders(): Promise<any[]> {
   try {
+    const localRes = await fetch(apiUrl('/api/work-orders'));
+    if (localRes.ok) {
+      const localData = await localRes.json();
+      const rawList = Array.isArray(localData)
+        ? localData
+        : (localData.workOrders || localData.orders || []);
+      if (rawList.length > 0) {
+        return rawList.map((item: any) => ({
+          id: item.id,
+          externalId: item.id,
+          title: item.job_title || item.title || 'Auto-Dispatched Work Order',
+          platform: item.platform || 'Neon PostgreSQL',
+          status: item.status === 'completed' || item.status === 'paid' ? 'completed' : (item.status === 'assigned' ? 'in-progress' : item.status),
+          amount: Number(item.job_budget || item.budget || item.amount || 250),
+          category: item.category || 'Backend Engineering',
+          time: item.completed_at ? new Date(item.completed_at).toLocaleDateString() : (item.created_at ? new Date(item.created_at).toLocaleDateString() : 'Active'),
+          clientName: item.client_name || item.customer_id || 'System Auto-Dispatch',
+          description: item.description || item.job_description || 'Automated work order workflow with real-time countdown and automated PayPal disbursement.',
+          skills: item.skills || ['Node.js', 'PostgreSQL', 'PayPal'],
+          completion_deadline: item.completion_deadline,
+          completed_at: item.completed_at,
+          customer_confirmed: item.customer_confirmed,
+          worker_marked_complete: item.worker_marked_complete,
+          worker_email: item.worker_email,
+        }));
+      }
+    }
+  } catch (err: any) {
+    console.warn('[GigPilot Backend] /api/work-orders query notice:', err?.message || err);
+  }
+
+  try {
     const res = await fetch(`${BACKEND_BASE_URL}/api/bids?limit=50`);
     if (res.ok) {
       const data = await res.json();
@@ -431,26 +463,12 @@ export async function fetchBackendWorkOrders(): Promise<any[]> {
       if (bids.length > 0) {
         return bids;
       }
-    } else {
-      console.warn(`[GigPilot Backend] Warning: ${BACKEND_BASE_URL}/api/bids responded with HTTP ${res.status}`);
     }
-    const localRes = await fetch(apiUrl('/api/work-orders'));
-    const localData = await localRes.json();
-    if (localData.success && Array.isArray(localData.orders)) {
-      return localData.orders;
-    }
-    return [];
   } catch (err: any) {
-    console.warn(`[GigPilot Backend] Backend unreachable at ${BACKEND_BASE_URL}/api/bids. Error:`, err?.message || err);
-    try {
-      const localRes = await fetch(apiUrl('/api/work-orders'));
-      const localData = await localRes.json();
-      if (localData.success && Array.isArray(localData.orders)) {
-        return localData.orders;
-      }
-    } catch {}
-    return [];
+    console.warn('[GigPilot Backend] Fallback bids query notice:', err?.message || err);
   }
+
+  return [];
 }
 
 export async function completeBackendWorkOrder(orderId: number | string): Promise<{ success: boolean; payoutAmount?: number; message?: string }> {

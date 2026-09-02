@@ -116,6 +116,11 @@ export async function completeWorkOrderAndPayout(
   workOrder.status = 'completed';
   workOrder.completed_at = now.toISOString();
   workOrder.payment_status = 'processing';
+  if (triggerReason === 'customer_confirmation') {
+    workOrder.customer_confirmed = true;
+  } else if (triggerReason === 'worker_action') {
+    workOrder.worker_marked_complete = true;
+  }
 
   // 2. Decrement worker current_workload
   if (worker.current_workload > 0) {
@@ -163,9 +168,11 @@ export async function completeWorkOrderAndPayout(
     try {
       await pool.query(
         `UPDATE work_orders
-         SET status = $1, completed_at = $2, payment_status = $3
-         WHERE id = $4`,
-        [workOrder.status, workOrder.completed_at, workOrder.payment_status, workOrder.id]
+         SET status = $1, completed_at = $2, payment_status = $3,
+             customer_confirmed = COALESCE($4, customer_confirmed),
+             worker_marked_complete = COALESCE($5, worker_marked_complete)
+         WHERE id = $6`,
+        [workOrder.status, workOrder.completed_at, workOrder.payment_status, workOrder.customer_confirmed || false, workOrder.worker_marked_complete || false, workOrder.id]
       );
 
       await pool.query(
@@ -217,7 +224,7 @@ export async function completeWorkOrderAndPayout(
 }
 
 /**
- * Scan for overdue work orders whose completion deadline has passed and auto-approve them
+ * Scan for overdue work orders whose completion deadline has passed, or marked completed by worker/customer, and auto-approve them
  */
 export async function checkAndAutoApproveOverdueWorkOrders(): Promise<{
   scannedCount: number;
@@ -235,7 +242,7 @@ export async function checkAndAutoApproveOverdueWorkOrders(): Promise<{
       const res = await pool.query(
         `SELECT * FROM work_orders
          WHERE status IN ('assigned', 'in_progress')
-           AND completion_deadline <= $1`,
+           AND (completion_deadline <= $1 OR customer_confirmed = TRUE OR worker_marked_complete = TRUE)`,
         [now.toISOString()]
       );
       overdueOrders = res.rows;
@@ -246,13 +253,21 @@ export async function checkAndAutoApproveOverdueWorkOrders(): Promise<{
 
   if (overdueOrders.length === 0) {
     overdueOrders = Array.from(memoryStore.workOrders.values()).filter((wo) => {
-      return (wo.status === 'assigned' || wo.status === 'in_progress') && new Date(wo.completion_deadline) <= now;
+      const isOverdue = new Date(wo.completion_deadline) <= now;
+      const isConfirmed = Boolean(wo.customer_confirmed || wo.worker_marked_complete);
+      return (wo.status === 'assigned' || wo.status === 'in_progress') && (isOverdue || isConfirmed);
     });
   }
 
   for (const order of overdueOrders) {
     try {
-      const res = await completeWorkOrderAndPayout(order.id, 'deadline_auto_approve');
+      const reason = order.customer_confirmed
+        ? 'customer_confirmation'
+        : order.worker_marked_complete
+        ? 'worker_action'
+        : 'deadline_auto_approve';
+
+      const res = await completeWorkOrderAndPayout(order.id, reason);
       if (res.success) {
         approvedIds.push(order.id);
       }

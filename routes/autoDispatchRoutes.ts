@@ -74,10 +74,164 @@ router.get('/jobs', async (req, res) => {
 });
 
 /**
- * GET /api/work-orders
+ * Helper to fetch a single work order by id
+ */
+async function getWorkOrderById(id: string) {
+  const pool = getPgPool();
+  if (pool) {
+    try {
+      const res = await pool.query(`
+        SELECT 
+          wo.*,
+          j.title as job_title,
+          j.budget as job_budget,
+          u.email as worker_email,
+          u.paypal_email as worker_paypal_email,
+          u.rating as worker_rating
+        FROM work_orders wo
+        LEFT JOIN jobs j ON wo.job_id = j.id
+        LEFT JOIN users u ON wo.worker_id = u.id
+        WHERE wo.id = $1
+      `, [id]);
+      if (res.rows.length > 0) return res.rows[0];
+    } catch (err: any) {
+      console.warn('⚠️ [WorkOrder Lookup] Postgres query fallback:', err.message);
+    }
+  }
+
+  const wo = memoryStore.workOrders.get(id);
+  if (!wo) return null;
+  const job = memoryStore.jobs.get(wo.job_id);
+  const worker = memoryStore.users.get(wo.worker_id);
+  return {
+    ...wo,
+    job_title: job?.title || 'Unknown Job',
+    job_budget: job?.budget || 0,
+    worker_email: worker?.email || 'Unknown',
+    worker_paypal_email: worker?.paypal_email || null,
+    worker_rating: worker?.rating || 0,
+  };
+}
+
+/**
+ * GET /api/workorders/status or /api/work-orders/status
+ * Returns current status, completion_deadline, time remaining, and completed_at
+ */
+router.get(['/workorders/status', '/work-orders/status'], async (req, res) => {
+  try {
+    const { id } = req.query;
+    const now = Date.now();
+
+    if (id) {
+      const order = await getWorkOrderById(String(id));
+      if (!order) {
+        return res.status(404).json({ success: false, error: `Work order ${id} not found.` });
+      }
+      const deadlineMs = new Date(order.completion_deadline).getTime();
+      const timeRemainingMs = Math.max(0, deadlineMs - now);
+      const isOverdue = deadlineMs <= now && order.status !== 'completed' && order.status !== 'paid';
+
+      return res.json({
+        success: true,
+        id: order.id,
+        status: order.status,
+        payment_status: order.payment_status,
+        completion_deadline: order.completion_deadline,
+        completed_at: order.completed_at,
+        customer_confirmed: order.customer_confirmed || false,
+        worker_marked_complete: order.worker_marked_complete || false,
+        timeRemainingMs,
+        timeRemainingSeconds: Math.floor(timeRemainingMs / 1000),
+        isOverdue,
+        serverTime: new Date(now).toISOString(),
+      });
+    }
+
+    // Return status summary for all orders
+    const pool = getPgPool();
+    let orders: any[] = [];
+    if (pool) {
+      try {
+        const result = await pool.query('SELECT * FROM work_orders ORDER BY completion_deadline ASC');
+        orders = result.rows;
+      } catch (err: any) {
+        console.warn('⚠️ [WorkOrders Status] Postgres query fallback:', err.message);
+      }
+    }
+    if (orders.length === 0) {
+      orders = Array.from(memoryStore.workOrders.values());
+    }
+
+    const statuses = orders.map((wo) => {
+      const deadlineMs = new Date(wo.completion_deadline).getTime();
+      const timeRemainingMs = Math.max(0, deadlineMs - now);
+      return {
+        id: wo.id,
+        status: wo.status,
+        payment_status: wo.payment_status,
+        completion_deadline: wo.completion_deadline,
+        completed_at: wo.completed_at,
+        customer_confirmed: wo.customer_confirmed || false,
+        worker_marked_complete: wo.worker_marked_complete || false,
+        timeRemainingMs,
+        timeRemainingSeconds: Math.floor(timeRemainingMs / 1000),
+        isOverdue: deadlineMs <= now && wo.status !== 'completed' && wo.status !== 'paid',
+      };
+    });
+
+    return res.json({
+      success: true,
+      serverTime: new Date(now).toISOString(),
+      count: statuses.length,
+      statuses,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/workorders/:id/status or /api/work-orders/:id/status
+ */
+router.get(['/workorders/:id/status', '/work-orders/:id/status'], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const now = Date.now();
+    const order = await getWorkOrderById(id);
+
+    if (!order) {
+      return res.status(404).json({ success: false, error: `Work order ${id} not found.` });
+    }
+
+    const deadlineMs = new Date(order.completion_deadline).getTime();
+    const timeRemainingMs = Math.max(0, deadlineMs - now);
+    const isOverdue = deadlineMs <= now && order.status !== 'completed' && order.status !== 'paid';
+
+    return res.json({
+      success: true,
+      id: order.id,
+      status: order.status,
+      payment_status: order.payment_status,
+      completion_deadline: order.completion_deadline,
+      completed_at: order.completed_at,
+      customer_confirmed: order.customer_confirmed || false,
+      worker_marked_complete: order.worker_marked_complete || false,
+      timeRemainingMs,
+      timeRemainingSeconds: Math.floor(timeRemainingMs / 1000),
+      isOverdue,
+      serverTime: new Date(now).toISOString(),
+      order,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/work-orders or /api/workorders
  * List all work orders with worker and job details
  */
-router.get('/work-orders', async (req, res) => {
+router.get(['/work-orders', '/workorders'], async (req, res) => {
   try {
     const pool = getPgPool();
     if (pool) {
@@ -121,10 +275,10 @@ router.get('/work-orders', async (req, res) => {
 });
 
 /**
- * POST /api/work-orders/:id/complete
+ * POST /api/work-orders/:id/complete or /api/workorders/:id/complete
  * Worker marks work order as complete -> Triggers automated PayPal Payout
  */
-router.post('/work-orders/:id/complete', async (req, res) => {
+router.post(['/work-orders/:id/complete', '/workorders/:id/complete'], async (req, res) => {
   try {
     const { id } = req.params;
     const result = await completeWorkOrderAndPayout(id, 'worker_action');
@@ -150,10 +304,10 @@ router.post('/work-orders/:id/complete', async (req, res) => {
 });
 
 /**
- * POST /api/work-orders/:id/confirm
+ * POST /api/work-orders/:id/confirm or /api/workorders/:id/confirm
  * Customer confirms completion -> Triggers automated PayPal Payout
  */
-router.post('/work-orders/:id/confirm', async (req, res) => {
+router.post(['/work-orders/:id/confirm', '/workorders/:id/confirm'], async (req, res) => {
   try {
     const { id } = req.params;
     const result = await completeWorkOrderAndPayout(id, 'customer_confirmation');

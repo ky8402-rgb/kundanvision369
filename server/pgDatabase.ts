@@ -39,6 +39,8 @@ export interface WorkOrder {
   completion_deadline: string;
   completed_at: string | null;
   payment_status: 'pending' | 'processing' | 'paid' | 'failed';
+  customer_confirmed?: boolean;
+  worker_marked_complete?: boolean;
 }
 
 export interface Transaction {
@@ -176,8 +178,13 @@ export async function initializeDatabaseSchema(): Promise<boolean> {
           status TEXT DEFAULT 'assigned',
           completion_deadline TIMESTAMP,
           completed_at TIMESTAMP,
-          payment_status TEXT DEFAULT 'pending'
+          payment_status TEXT DEFAULT 'pending',
+          customer_confirmed BOOLEAN DEFAULT FALSE,
+          worker_marked_complete BOOLEAN DEFAULT FALSE
       );
+
+      ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS customer_confirmed BOOLEAN DEFAULT FALSE;
+      ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS worker_marked_complete BOOLEAN DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS transactions (
           id UUID PRIMARY KEY,

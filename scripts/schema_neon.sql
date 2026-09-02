@@ -47,8 +47,14 @@ CREATE TABLE IF NOT EXISTS work_orders (
     status TEXT DEFAULT 'assigned', -- assigned, in_progress, completed, paid
     completion_deadline TIMESTAMP NOT NULL,
     completed_at TIMESTAMP,
-    payment_status TEXT DEFAULT 'pending' -- pending, processing, paid, failed
+    payment_status TEXT DEFAULT 'pending', -- pending, processing, paid, failed
+    customer_confirmed BOOLEAN DEFAULT FALSE,
+    worker_marked_complete BOOLEAN DEFAULT FALSE
 );
+
+-- Migration commands for existing database tables:
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS customer_confirmed BOOLEAN DEFAULT FALSE;
+ALTER TABLE work_orders ADD COLUMN IF NOT EXISTS worker_marked_complete BOOLEAN DEFAULT FALSE;
 
 -- 6. Create "transactions" Table
 CREATE TABLE IF NOT EXISTS transactions (
