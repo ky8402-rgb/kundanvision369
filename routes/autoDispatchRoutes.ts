@@ -239,13 +239,17 @@ router.get(['/work-orders', '/workorders'], async (req, res) => {
         const result = await pool.query(`
           SELECT 
             wo.*,
+            COALESCE(j.title, 'Auto-Dispatched Task') as title,
+            COALESCE(b.amount, j.budget, 250) as amount,
             j.title as job_title,
             j.budget as job_budget,
+            b.amount as bid_amount,
             u.email as worker_email,
             u.paypal_email as worker_paypal_email,
             u.rating as worker_rating
           FROM work_orders wo
           LEFT JOIN jobs j ON wo.job_id = j.id
+          LEFT JOIN bids b ON wo.bid_id = b.id
           LEFT JOIN users u ON wo.worker_id = u.id
           ORDER BY wo.completion_deadline ASC
         `);
@@ -258,10 +262,14 @@ router.get(['/work-orders', '/workorders'], async (req, res) => {
     const workOrders = Array.from(memoryStore.workOrders.values()).map((wo) => {
       const job = memoryStore.jobs.get(wo.job_id);
       const worker = memoryStore.users.get(wo.worker_id);
+      const bid = wo.bid_id ? memoryStore.bids.get(wo.bid_id) : null;
       return {
         ...wo,
+        title: job?.title || 'Auto-Dispatched Task',
+        amount: bid?.amount || job?.budget || 250,
         job_title: job?.title || 'Unknown Job',
         job_budget: job?.budget || 0,
+        bid_amount: bid?.amount || null,
         worker_email: worker?.email || 'Unknown',
         worker_paypal_email: worker?.paypal_email || null,
         worker_rating: worker?.rating || 0,
