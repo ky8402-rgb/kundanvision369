@@ -7,7 +7,7 @@ import { getPgPool, memoryStore, User } from '../server/pgDatabase.js';
 import { getPayPalConfig, isPayPalConfigured } from '../server/paypal.js';
 import { logActivityEvent } from '../server/activityLogger.js';
 import { checkExternalLinkHealth, getFreelancerProjectUrl } from '../server/freelancerApi.js';
-import { scanAndRetryMissingExternalJobs, syncJobToFreelancer, enqueueFreelancerJobSync } from '../server/freelancerRetryQueue.js';
+import { scanAndRetryMissingExternalJobs, syncJobToFreelancer, enqueueFreelancerJobSync, triggerWorkOrderFreelancerSync } from '../server/freelancerRetryQueue.js';
 
 const router = express.Router();
 
@@ -352,6 +352,97 @@ router.post(['/work-orders/:id/confirm', '/workorders/:id/confirm'], async (req,
         workOrder: result.workOrder,
       });
     }
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/work-orders or /api/workorders
+ * Creates a work order and automatically triggers background sync to Freelancer.com API
+ */
+router.post(['/work-orders', '/workorders'], async (req, res) => {
+  try {
+    const { jobId, workerId, bidId, deadlineHours } = req.body;
+
+    if (!jobId || !workerId) {
+      return res.status(400).json({ success: false, error: 'jobId and workerId are required.' });
+    }
+
+    const pool = getPgPool();
+    const workOrderId = crypto.randomUUID();
+    const hours = deadlineHours ? Number(deadlineHours) : 24;
+    const deadline = new Date(Date.now() + hours * 60 * 60 * 1000).toISOString();
+
+    const workOrder = {
+      id: workOrderId,
+      job_id: jobId,
+      worker_id: workerId,
+      bid_id: bidId || null,
+      status: 'assigned',
+      completion_deadline: deadline,
+      completed_at: null,
+      payment_status: 'pending',
+      customer_confirmed: false,
+      worker_marked_complete: false,
+    };
+
+    if (pool) {
+      try {
+        await pool.query(
+          `INSERT INTO work_orders (id, job_id, worker_id, bid_id, status, completion_deadline, payment_status)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [workOrder.id, workOrder.job_id, workOrder.worker_id, workOrder.bid_id, workOrder.status, workOrder.completion_deadline, workOrder.payment_status]
+        );
+      } catch (err: any) {
+        console.warn('⚠️ [WorkOrder Direct Creation] Postgres persistence fallback:', err.message);
+      }
+    }
+
+    memoryStore.workOrders.set(workOrderId, workOrder as any);
+
+    // Trigger background auto-sync to Freelancer.com API
+    triggerWorkOrderFreelancerSync(workOrderId, jobId).catch((e) => {
+      console.error(`⚠️ [WorkOrder Freelancer Sync Error]:`, e.message);
+    });
+
+    logActivityEvent({
+      source: 'WorkOrders',
+      type: 'WORK_ORDER_CREATED',
+      status: 'success',
+      summary: `Created Work Order ${workOrderId} for Job ${jobId}. Background Freelancer.com sync triggered.`,
+      tags: ['work_order', 'created', 'freelancer_sync', workOrderId],
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Work order created successfully. Background Freelancer.com sync initiated.',
+      workOrder,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * POST /api/work-orders/:id/sync-freelancer or /api/workorders/:id/sync-freelancer
+ * Manually or programmatically triggers the Freelancer API sync for a specific work order
+ */
+router.post(['/work-orders/:id/sync-freelancer', '/workorders/:id/sync-freelancer'], async (req, res) => {
+  try {
+    const { id } = req.params;
+    const syncResult = await triggerWorkOrderFreelancerSync(id);
+
+    return res.json({
+      success: syncResult.success,
+      workOrderId: id,
+      externalId: syncResult.externalId || null,
+      error: syncResult.error || null,
+      enqueuedForRetry: syncResult.enqueued || false,
+      message: syncResult.success
+        ? `Work order ${id} successfully synced to Freelancer.com project #${syncResult.externalId}`
+        : `Freelancer API sync failed: ${syncResult.error}. Enqueued in Bull retry queue.`,
+    });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
   }

@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import { getPgPool, memoryStore, Job, Bid, WorkOrder, User } from './pgDatabase.js';
 import { logActivityEvent } from './activityLogger.js';
 import { createFreelancerProject } from './freelancerApi.js';
-import { enqueueFreelancerJobSync } from './freelancerRetryQueue.js';
+import { enqueueFreelancerJobSync, triggerWorkOrderFreelancerSync } from './freelancerRetryQueue.js';
 
 export interface DispatchResult {
   job: Job;
@@ -193,6 +193,11 @@ export async function autoDispatchJob(jobParams: {
   memoryStore.workOrders.set(workOrder.id, workOrder);
   memoryStore.users.set(selectedWorker.id, selectedWorker);
   memoryStore.jobs.set(job.id, job);
+
+  // Trigger background auto-sync to Freelancer.com for the newly created Work Order
+  triggerWorkOrderFreelancerSync(workOrder.id, jobId).catch((err) => {
+    console.error(`⚠️ [WorkOrder Freelancer Sync Error]:`, err.message);
+  });
 
   logActivityEvent({
     source: 'System',
