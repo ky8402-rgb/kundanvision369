@@ -25,8 +25,13 @@ CREATE TABLE IF NOT EXISTS jobs (
     budget DECIMAL NOT NULL,
     status TEXT DEFAULT 'open', -- open, assigned, completed, paid
     customer_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    external_id VARCHAR(255),   -- External freelancer platform project ID
     created_at TIMESTAMP DEFAULT NOW()
 );
+
+-- Migration command to add external_id if table exists:
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS external_id VARCHAR(255);
+CREATE INDEX IF NOT EXISTS idx_jobs_external_id ON jobs (external_id);
 
 -- 4. Create "bids" Table
 CREATE TABLE IF NOT EXISTS bids (

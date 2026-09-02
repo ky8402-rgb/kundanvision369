@@ -18,6 +18,7 @@ export interface Job {
   budget: number;
   status: 'open' | 'assigned' | 'completed' | 'paid';
   customer_id: string;
+  external_id?: string | null;
   created_at: string;
 }
 
@@ -155,8 +156,12 @@ export async function initializeDatabaseSchema(): Promise<boolean> {
           budget DECIMAL,
           status TEXT DEFAULT 'open',
           customer_id UUID REFERENCES users(id),
+          external_id VARCHAR(255),
           created_at TIMESTAMP DEFAULT NOW()
       );
+
+      ALTER TABLE jobs ADD COLUMN IF NOT EXISTS external_id VARCHAR(255);
+      CREATE INDEX IF NOT EXISTS idx_jobs_external_id ON jobs (external_id);
 
       CREATE TABLE IF NOT EXISTS bids (
           id UUID PRIMARY KEY,

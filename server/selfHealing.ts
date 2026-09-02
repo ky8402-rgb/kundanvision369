@@ -227,7 +227,7 @@ Context: ${JSON.stringify({ errorLog, appContext, category: analysis.category })
 
 Provide a concise, highly actionable root cause analysis (1-2 sentences) and 3 bullet recovery steps.`;
         const response = await gemini.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-3.7-flash",
           contents: prompt,
         });
         if (response.text) {

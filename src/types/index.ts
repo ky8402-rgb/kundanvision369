@@ -14,6 +14,8 @@ export interface ClientInfo {
 
 export interface FreelanceJob {
   id: string;
+  externalId?: string;
+  externalUrl?: string;
   title: string;
   platform: PlatformType | string;
   platformUrl?: string;

@@ -244,15 +244,20 @@ export const WorkOrdersView: React.FC<WorkOrdersViewProps> = ({
                       {order.clientName && (
                         <span><i className="fas fa-user-check mr-1 text-[10px] text-emerald-400"></i>{order.clientName}</span>
                       )}
-                      {order.url && order.url !== '#' && (
+                      {((order as any).external_project_url || (order as any).external_id || order.url) ? (
                         <a
-                          href={order.url}
+                          href={(order as any).external_project_url || ((order as any).external_id ? `https://www.freelancer.com/projects/${(order as any).external_id}` : order.url)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="text-purple-400 hover:text-purple-300 hover:underline inline-flex items-center gap-1 font-medium"
                         >
-                          <i className="fas fa-external-link-alt text-[10px]"></i> View Job Post
+                          <i className="fas fa-external-link-alt text-[10px]"></i>
+                          {(order as any).external_id ? `Project #${(order as any).external_id}` : 'View Job Post'}
                         </a>
+                      ) : (
+                        <span className="text-slate-500 inline-flex items-center gap-1 text-[11px]">
+                          <i className="fas fa-link-slash text-[9px]"></i> Link Not Available
+                        </span>
                       )}
                     </div>
 

@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { getPgPool, memoryStore, Job, Bid, WorkOrder, User } from './pgDatabase.js';
 import { logActivityEvent } from './activityLogger.js';
+import { createFreelancerProject } from './freelancerApi.js';
+import { enqueueFreelancerJobSync } from './freelancerRetryQueue.js';
 
 export interface DispatchResult {
   job: Job;
@@ -13,10 +15,11 @@ export interface DispatchResult {
 
 /**
  * Auto-Dispatch Engine:
- * 1. Selects best available worker based on lowest current workload and highest rating.
- * 2. Creates a bid and marks it accepted.
- * 3. Creates an active work order with completion deadline.
- * 4. Increments the worker's current workload and updates job status to 'assigned'.
+ * 1. Syncs project to external freelancer site (or queues for retry if offline/error).
+ * 2. Selects best available worker based on lowest current workload and highest rating.
+ * 3. Creates a bid and marks it accepted.
+ * 4. Creates an active work order with completion deadline.
+ * 5. Increments the worker's current workload and updates job status to 'assigned'.
  */
 export async function autoDispatchJob(jobParams: {
   title: string;
@@ -24,6 +27,7 @@ export async function autoDispatchJob(jobParams: {
   budget: number;
   customerId?: string;
   deadlineHours?: number;
+  externalId?: string;
 }): Promise<DispatchResult> {
   const pool = getPgPool();
   const jobId = crypto.randomUUID();
@@ -33,6 +37,27 @@ export async function autoDispatchJob(jobParams: {
   const now = new Date();
   const deadline = new Date(now.getTime() + deadlineHours * 60 * 60 * 1000);
 
+  // 1. Create or resolve external project ID on the freelancer site
+  let externalId: string | null = jobParams.externalId || null;
+  if (!externalId) {
+    try {
+      const syncResult = await createFreelancerProject({
+        title: jobParams.title,
+        description: jobParams.description,
+        budget,
+      });
+      if (syncResult.success && syncResult.projectId) {
+        externalId = syncResult.projectId;
+      } else {
+        // Enqueue for background retry via Bull queue
+        enqueueFreelancerJobSync(jobId);
+      }
+    } catch (e: any) {
+      console.warn(`⚠️ [Job Creation] Freelancer API sync error, enqueuing for retry: ${e.message}`);
+      enqueueFreelancerJobSync(jobId);
+    }
+  }
+
   const job: Job = {
     id: jobId,
     title: jobParams.title,
@@ -40,6 +65,7 @@ export async function autoDispatchJob(jobParams: {
     budget,
     status: 'open',
     customer_id: customerId,
+    external_id: externalId,
     created_at: now.toISOString(),
   };
 
@@ -48,11 +74,11 @@ export async function autoDispatchJob(jobParams: {
 
   if (pool) {
     try {
-      // 1. Insert Job
+      // 1. Insert Job with external_id
       await pool.query(
-        `INSERT INTO jobs (id, title, description, budget, status, customer_id, created_at)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [job.id, job.title, job.description, job.budget, job.status, job.customer_id, job.created_at]
+        `INSERT INTO jobs (id, title, description, budget, status, customer_id, external_id, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [job.id, job.title, job.description, job.budget, job.status, job.customer_id, job.external_id, job.created_at]
       );
 
       // 2. Select best worker

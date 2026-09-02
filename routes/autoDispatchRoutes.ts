@@ -6,6 +6,8 @@ import { triggerAISupportIncident, queryAISupportChat, activeSupportTickets } fr
 import { getPgPool, memoryStore, User } from '../server/pgDatabase.js';
 import { getPayPalConfig, isPayPalConfigured } from '../server/paypal.js';
 import { logActivityEvent } from '../server/activityLogger.js';
+import { checkExternalLinkHealth, getFreelancerProjectUrl } from '../server/freelancerApi.js';
+import { scanAndRetryMissingExternalJobs, syncJobToFreelancer, enqueueFreelancerJobSync } from '../server/freelancerRetryQueue.js';
 
 const router = express.Router();
 
@@ -50,7 +52,7 @@ router.post('/jobs', async (req, res) => {
 
 /**
  * GET /api/jobs
- * List all jobs
+ * List all jobs enriched with external_id and external_project_url
  */
 router.get('/jobs', async (req, res) => {
   try {
@@ -58,15 +60,23 @@ router.get('/jobs', async (req, res) => {
     if (pool) {
       try {
         const result = await pool.query('SELECT * FROM jobs ORDER BY created_at DESC');
-        return res.json({ success: true, jobs: result.rows });
+        const enrichedJobs = result.rows.map((j) => ({
+          ...j,
+          external_project_url: getFreelancerProjectUrl(j.external_id),
+        }));
+        return res.json({ success: true, jobs: enrichedJobs });
       } catch (err: any) {
         console.warn('⚠️ [Jobs Route] Postgres read fallback:', err.message);
       }
     }
 
-    const jobs = Array.from(memoryStore.jobs.values()).sort(
-      (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+    const jobs = Array.from(memoryStore.jobs.values())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .map((j) => ({
+        ...j,
+        external_project_url: getFreelancerProjectUrl(j.external_id),
+      }));
+
     return res.json({ success: true, jobs });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });
@@ -229,7 +239,7 @@ router.get(['/workorders/:id/status', '/work-orders/:id/status'], async (req, re
 
 /**
  * GET /api/work-orders or /api/workorders
- * List all work orders with worker and job details
+ * List all work orders with worker and job details including external project link
  */
 router.get(['/work-orders', '/workorders'], async (req, res) => {
   try {
@@ -243,6 +253,7 @@ router.get(['/work-orders', '/workorders'], async (req, res) => {
             COALESCE(b.amount, j.budget, 250) as amount,
             j.title as job_title,
             j.budget as job_budget,
+            j.external_id,
             b.amount as bid_amount,
             u.email as worker_email,
             u.paypal_email as worker_paypal_email,
@@ -253,7 +264,11 @@ router.get(['/work-orders', '/workorders'], async (req, res) => {
           LEFT JOIN users u ON wo.worker_id = u.id
           ORDER BY wo.completion_deadline ASC
         `);
-        return res.json({ success: true, workOrders: result.rows });
+        const workOrders = result.rows.map((wo) => ({
+          ...wo,
+          external_project_url: getFreelancerProjectUrl(wo.external_id),
+        }));
+        return res.json({ success: true, workOrders });
       } catch (err: any) {
         console.warn('⚠️ [WorkOrders Route] Postgres query fallback:', err.message);
       }
@@ -269,6 +284,8 @@ router.get(['/work-orders', '/workorders'], async (req, res) => {
         amount: bid?.amount || job?.budget || 250,
         job_title: job?.title || 'Unknown Job',
         job_budget: job?.budget || 0,
+        external_id: job?.external_id || null,
+        external_project_url: getFreelancerProjectUrl(job?.external_id),
         bid_amount: bid?.amount || null,
         worker_email: worker?.email || 'Unknown',
         worker_paypal_email: worker?.paypal_email || null,
@@ -535,6 +552,97 @@ router.post('/retry/trigger', async (req, res) => {
       success: true,
       message: 'Self-healing diagnostic cycle executed successfully.',
       diagnostic,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/**
+ * GET /api/health/freelancer-links and /api/health/external-links
+ * Picks a sample job with external_id, does a HEAD request to the Freelancer.com external URL,
+ * and returns { valid: true/false, ... }. If invalid, triggers the Bull retry queue to re-sync.
+ */
+router.get(['/health/freelancer-links', '/health/external-links'], async (req, res) => {
+  try {
+    const pool = getPgPool();
+    let sampleJob: { id: string; title: string; external_id?: string | null } | null = null;
+    let missingCount = 0;
+    let missingJobs: any[] = [];
+
+    if (pool) {
+      try {
+        const sampleRes = await pool.query('SELECT id, title, external_id FROM jobs WHERE external_id IS NOT NULL AND external_id != \'\' ORDER BY created_at DESC LIMIT 1');
+        if (sampleRes.rows.length > 0) {
+          sampleJob = sampleRes.rows[0];
+        }
+
+        const missingRes = await pool.query('SELECT id, title, budget, created_at FROM jobs WHERE external_id IS NULL OR external_id = \'\' LIMIT 20');
+        missingCount = missingRes.rows.length;
+        missingJobs = missingRes.rows;
+      } catch (e: any) {
+        console.warn('⚠️ [Health Freelancer Links] Query notice:', e.message);
+      }
+    }
+
+    if (!sampleJob) {
+      for (const job of memoryStore.jobs.values()) {
+        if (job.external_id) {
+          sampleJob = { id: job.id, title: job.title, external_id: job.external_id };
+          break;
+        }
+      }
+    }
+
+    // Perform HTTP HEAD verification on the sample job's external Freelancer.com URL
+    const linkCheck = await checkExternalLinkHealth(sampleJob?.external_id || 'sample_proj_1001');
+
+    // If invalid, degraded, or missing external IDs exist, trigger Bull retry queue to heal/re-sync
+    let autoHealResult = { scannedCount: 0, fixedCount: 0 };
+    if (!linkCheck.valid || missingCount > 0) {
+      if (sampleJob && !linkCheck.valid) {
+        // Enqueue this specific invalid job for immediate re-sync
+        await enqueueFreelancerJobSync(sampleJob.id);
+      }
+      autoHealResult = await scanAndRetryMissingExternalJobs();
+    }
+
+    const isValid = linkCheck.valid;
+
+    return res.json({
+      valid: isValid,
+      status: isValid ? 'healthy' : 'degraded',
+      testedJobId: sampleJob?.id || null,
+      testedExternalId: sampleJob?.external_id || 'sample_proj_1001',
+      testedUrl: linkCheck.testedUrl,
+      httpStatus: linkCheck.httpStatus,
+      responseTimeMs: linkCheck.responseTimeMs,
+      error: linkCheck.error || null,
+      missingExternalIdsCount: missingCount,
+      missingJobsSample: missingJobs.map(j => ({ id: j.id, title: j.title })),
+      autoHealingQueueTriggered: autoHealResult.fixedCount > 0 || !isValid,
+      autoHealedEnqueuedCount: autoHealResult.fixedCount,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    return res.status(500).json({ valid: false, status: 'error', error: err.message });
+  }
+});
+
+/**
+ * POST /api/jobs/:id/sync-freelancer
+ * Manually forces external sync of a job to the Freelancer website
+ */
+router.post('/jobs/:id/sync-freelancer', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const success = await syncJobToFreelancer(id);
+    return res.json({
+      success,
+      jobId: id,
+      message: success
+        ? `Successfully synced job ${id} with external freelancer platform.`
+        : `Could not sync job ${id}. Enqueued for automatic background retry.`,
     });
   } catch (err: any) {
     return res.status(500).json({ success: false, error: err.message });

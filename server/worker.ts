@@ -5,6 +5,7 @@ import { logActivityEvent } from './activityLogger.js';
 import { getGeminiAI } from './gemini.js';
 import { clearBidsCache } from './redisCache.js';
 import { runSelfHealingDiagnostics } from './retryWorker.js';
+import { scanAndRetryMissingExternalJobs } from './freelancerRetryQueue.js';
 
 console.log('🚀 [GigPilot Background Worker] Initialized and running...');
 
@@ -44,13 +45,13 @@ Structure:
 3. Call to action offering immediate discovery/call.`
           });
           draftCoverLetter = response.text || '';
-        } catch (e: any) {
-          console.warn(`[Worker AI Proposal] Fallback generated for job ${job.id}:`, e.message);
+        } catch {
+          // Graceful fallback to deterministic template when external Gemini API is unreachable or rate limited
         }
       }
 
       if (!draftCoverLetter) {
-        draftCoverLetter = `Hello ${job.company || 'Hiring Manager'},\n\nI reviewed your requirements for "${job.title}" and have extensive hands-on experience building resilient full-stack systems and high-throughput automations with React, Node.js, and TypeScript.\n\nI can deliver this project with pristine test coverage and high performance.\n\nBest regards,\nKundan Kumar | Senior Solutions Engineer`;
+        draftCoverLetter = `Hello ${job.company || 'Hiring Manager'},\n\nI reviewed your requirements for "${job.title}" and have extensive hands-on experience building resilient full-stack systems and high-throughput automations with React, Node.js, and TypeScript.\n\nI can deliver this project with pristine test coverage, fast milestone execution, and high performance.\n\nBest regards,\nKundan Kumar | Senior Solutions Engineer`;
       }
 
       // Check if proposal or bid record already exists
@@ -129,10 +130,11 @@ cron.schedule('0 * * * *', () => {
   runWorkerCycle();
 });
 
-// Self-healing check every 30 seconds
+// Self-healing check & missing external jobs retry every 30 seconds
 cron.schedule('*/30 * * * * *', async () => {
   try {
     await runSelfHealingDiagnostics();
+    await scanAndRetryMissingExternalJobs();
   } catch (e: any) {
     console.warn('[Worker] Self-healing cycle error:', e.message);
   }
