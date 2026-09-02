@@ -37,6 +37,7 @@ import authRoutes from "./routes/auth.js";
 import freelancerBidsRoutes from "./routes/freelancerBids.js";
 import neonRoutes from "./routes/neon.js";
 import autoDispatchRoutes from "./routes/autoDispatchRoutes.js";
+import "./server/worker.js";
 import { logActivityEvent } from "./server/activityLogger.js";
 import { verifyWebhookSignature } from "./server/webhookSecurity.js";
 import { checkCredits } from "./server/checkCredits.js";

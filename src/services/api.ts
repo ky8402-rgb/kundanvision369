@@ -6,14 +6,18 @@ import { FreelanceJob, FreelancerProfile, GeneratedProposal } from '../types';
 export const BACKEND_BASE_URL = 'https://gigpilot-backend-g4j0.onrender.com';
 
 /**
- * Helper to dynamically resolve API base URL for Render or same-origin deployment
+ * Helper to dynamically resolve API base URL for Render, localhost:3000, or same-origin deployment
  */
 export function getApiBaseUrl(): string {
   const envUrl = (import.meta as any).env?.VITE_BACKEND_URL || (import.meta as any).env?.VITE_API_BASE_URL || (import.meta as any).env?.VITE_API_URL;
   if (envUrl && typeof envUrl === 'string' && envUrl.trim().length > 0) {
     return envUrl.trim().replace(/\/+$/, '');
   }
-  return BACKEND_BASE_URL;
+  // If running in browser and on port 3000 or same origin Express+Vite
+  if (typeof window !== 'undefined' && window.location) {
+    return window.location.origin;
+  }
+  return 'http://localhost:3000';
 }
 
 /**

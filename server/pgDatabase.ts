@@ -119,9 +119,6 @@ export function getPgPool(): Pool | null {
   }
 
   if (!pgPoolInstance) {
-    if (dbUrl.includes('neon.tech')) {
-      return getNeonPool() as unknown as Pool;
-    }
     pgPoolInstance = new Pool({
       connectionString: dbUrl,
       ssl: dbUrl.includes('localhost') ? false : { rejectUnauthorized: false },

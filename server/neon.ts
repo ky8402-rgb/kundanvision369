@@ -2,18 +2,18 @@ import { neon, neonConfig, Pool } from '@neondatabase/serverless';
 
 // Configure Neon Serverless driver
 // Uses standard WebSockets / HTTP for lightweight connection-pooled queries
-const databaseUrl = (process.env.DATABASE_URL || '').trim();
-
 export function getNeonSql() {
-  const activeUrl = databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://')
-    ? databaseUrl
+  const dbUrl = (process.env.DATABASE_URL || '').trim();
+  const activeUrl = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://')
+    ? dbUrl
     : 'postgresql://neondb_owner:dummy@ep-dummy.us-east-2.aws.neon.tech/neondb?sslmode=require';
   return neon(activeUrl);
 }
 
 export function getNeonPool() {
-  const activeUrl = databaseUrl.startsWith('postgresql://') || databaseUrl.startsWith('postgres://')
-    ? databaseUrl
+  const dbUrl = (process.env.DATABASE_URL || '').trim();
+  const activeUrl = dbUrl.startsWith('postgresql://') || dbUrl.startsWith('postgres://')
+    ? dbUrl
     : 'postgresql://neondb_owner:dummy@ep-dummy.us-east-2.aws.neon.tech/neondb?sslmode=require';
   return new Pool({ connectionString: activeUrl });
 }
@@ -31,6 +31,7 @@ export async function testNeonConnection(): Promise<{
   error?: string;
 }> {
   const startTime = Date.now();
+  const databaseUrl = (process.env.DATABASE_URL || '').trim();
   try {
     if (!databaseUrl || !databaseUrl.includes('neon.tech')) {
       return {
