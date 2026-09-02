@@ -36,6 +36,7 @@ import activityLogsRoutes from "./routes/activityLogs.js";
 import authRoutes from "./routes/auth.js";
 import freelancerBidsRoutes from "./routes/freelancerBids.js";
 import neonRoutes from "./routes/neon.js";
+import autoDispatchRoutes from "./routes/autoDispatchRoutes.js";
 import { logActivityEvent } from "./server/activityLogger.js";
 import { verifyWebhookSignature } from "./server/webhookSecurity.js";
 import { checkCredits } from "./server/checkCredits.js";
@@ -274,6 +275,9 @@ app.use("/api/freelancer", freelancerBidsRoutes);
 
 // 9. Neon Serverless PostgreSQL Gateway & Diagnostics
 app.use("/api/neon", neonRoutes);
+
+// 10. Autonomous Auto-Dispatch, Work Orders, PayPal Payouts & Self-Healing Routes
+app.use("/api", autoDispatchRoutes);
 
 // Compatibility aliases for /api/bids, /api/bids/stats, and /api/leads list
 app.use("/api/bids", freelancerBidsRoutes);

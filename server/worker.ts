@@ -4,6 +4,7 @@ import { syncLiveJobsToPostgres, prisma } from './db.js';
 import { logActivityEvent } from './activityLogger.js';
 import { getGeminiAI } from './gemini.js';
 import { clearBidsCache } from './redisCache.js';
+import { runSelfHealingDiagnostics } from './retryWorker.js';
 
 console.log('🚀 [GigPilot Background Worker] Initialized and running...');
 
@@ -126,6 +127,15 @@ export async function runWorkerCycle() {
 cron.schedule('0 * * * *', () => {
   console.log('[Worker] Cron trigger (0 * * * *) received');
   runWorkerCycle();
+});
+
+// Self-healing check every 30 seconds
+cron.schedule('*/30 * * * * *', async () => {
+  try {
+    await runSelfHealingDiagnostics();
+  } catch (e: any) {
+    console.warn('[Worker] Self-healing cycle error:', e.message);
+  }
 });
 
 // Startup trigger
